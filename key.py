@@ -1,0 +1,243 @@
+import os
+import logging
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+import fitz  # PyMuPDF
+import io
+from pydub import AudioSegment
+from duckduckgo_search import DDGS
+
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    MessageHandler,
+    filters
+)
+
+# ==============================
+# 1️⃣ SOZLAMALAR
+# ==============================
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+API_KEY = os.getenv("GEMINI_API_KEY")
+
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-3.1-flash-lite')
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+# ==============================
+# 2️⃣ PDF TAHLILI FUNKSIYASI
+# ==============================
+async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file = await update.message.document.get_file()
+    
+    if not update.message.document.file_name.lower().endswith('.pdf'):
+        return
+
+    await update.message.reply_text("PDF qabul qilindi. Matn o'qilmoqda... 📄")
+
+    try:
+        pdf_bytes = await file.download_as_bytearray()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        full_text = ""
+        for page in doc:
+            full_text += page.get_text()
+        doc.close()
+
+        # Matn borligini tekshiramiz
+        clean_text = full_text.strip()
+        
+        if len(clean_text) > 10:
+            await update.message.reply_text("Hujjat tahlil qilinmoqda... ✨")
+            
+            prompt = (
+                "Quyidagi PDF hujjat matnini diqqat bilan tahlil qil va uning eng muhim qismlarini "
+                "chiroyli tarzda va foydalanuvchi tushunadigan tarzda yetkaz." "Foydalanuvchi huddi kitoobni oqigandek bolsin, shunday yetkazginki."
+                "Kitob ichidagi eng oqilganda eng yorqin bolgan matnlarni tushuntirganingdan keyin, yozib qoy."
+                "Ortiqcha belgilarga e'tibor qaratma va ozing ham bu belgilarni ishlatma." "Qora shriftdagi harflar kerak emas."
+                "Foydalauvchi uzun matnlarni yomon koradi"
+                "Qora harf vaa so'zlardan foydalanma"
+                "Context kerak emas"
+                "Xulosa ham"
+                "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
+                f"\n\nMatn: {clean_text[:15000]}"
+            )
+            
+            response = model.generate_content(prompt)
+            
+            # 1. Avval natijani olamiz
+            final_output = response.text.strip()
+            
+            # 2. Sarlavhalarni dasturiy tozalash (Filtr)
+            filter_words = ["Hujjatning qisqacha mazmuni:", "Hujjat mazmuni:", "Tahlil:", "**Hujjatning qisqacha mazmuni:**"]
+            for word in filter_words:
+                if final_output.startswith(word):
+                    final_output = final_output.replace(word, "", 1).strip()
+
+            # 3. Faqat endi javobni yuboramiz
+            await update.message.reply_text(final_output)
+            
+        else:
+            await update.message.reply_text("PDF ichida o'qish uchun matn topilmadi.")
+
+    except Exception as e:
+        # Xatoni terminalda ko'rish uchun:
+        print(f"Xato yuz berdi: {e}")
+        await update.message.reply_text("PDF tahlilida texnik xatolik yuz berdi.")
+
+# ==============================
+# 3️⃣ MATN VA RASM FUNKSIYALARI
+# ==============================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+       "✨ *Assalomu alaykum!* ✨\n\n"
+        "Botimizga xush kelibsiz.\n\n"
+        "❓ Bot bo'yicha savollaringiz bo'lsa:\n"
+        "➖➖➖➖➖➖➖➖➖➖\n"
+        "👨‍💻 @acrenomius\n"
+    
+    )
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
+    
+async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    try:
+        response = model.generate_content(f"Quyidagi matnni o‘zbek tilida tushuntir:\n{user_text}")
+        await update.message.reply_text(response.text)
+    except Exception as e:
+        await update.message.reply_text(f"Xato: {str(e)}")
+
+async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        photo_file = await update.message.photo[-1].get_file()
+        image_bytearray = await photo_file.download_as_bytearray()
+        await update.message.reply_text("Rasm o'qilmoqda... 🔍")
+
+        image_parts = [{"mime_type": "image/jpeg", "data": bytes(image_bytearray)}]
+        
+        prompt = (
+            "Rasmdagi matnni o'zbek tiliga tarjima qil. "
+            "So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz. "
+            "qora harflarni ishlatma." "Agar rasmda ajratilgan biror belgi bolsa oshani qoyishing mumkin."
+            "Sen ozing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar shartmas"
+        )
+        
+        response = model.generate_content([prompt, image_parts[0]])
+        await update.message.reply_text(response.text if response.text else "Matn topilmadi.")
+    except Exception as e:
+        await update.message.reply_text(f"Rasm xatosi: {str(e)}")
+
+async def analyze_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Ovozli xabar eshitilmoqda... 🎧")
+    
+    try:
+        # 1. Ovozli xabarni Telegramdan yuklab olamiz
+        voice_file = await update.message.voice.get_file()
+        voice_bytearray = await voice_file.download_as_bytearray()
+        
+        # 2. To'g'ridan-to'g'ri Gemini-ga yuboramiz (FFmpeg shart emas!)
+        # Telegram ovozli xabarlari aslida 'audio/ogg' formatida bo'ladi
+        audio_parts = [
+            {
+                "mime_type": "audio/ogg", 
+                "data": bytes(voice_bytearray)
+            }
+        ]
+        
+        prompt = (
+            "Ushbu audio xabarni tingla va o'zbek tilida mantiqiy javob ber. "
+            "Agar savol bo'lsa javob qaytar, agar shunchaki fikr bo'lsa unga munosabat bildir. "
+            "Javobing samimiy va tushunarli bo'lsin."
+        )
+        
+        # Gemini multimodal model bo'lgani uchun ogg formatini tushunadi
+        response = model.generate_content([prompt, audio_parts[0]])
+        
+        if response.text:
+            await update.message.reply_text(f"🎤 **Javob:**\n\n{response.text}")
+        else:
+            await update.message.reply_text("Ovozni tushunib bo'lmadi, qaytadan yozib ko'ring.")
+
+    except Exception as e:
+        print(f"Ovoz xatosi: {e}")
+        await update.message.reply_text("Ovozli xabarni tahlil qilishda texnik xatolik yuz berdi. ✨")
+
+
+
+def search_internet(query):
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(
+                query,
+                region='uz-uz',       # O'zbekiston uchun
+                safesearch='moderate',
+                max_results=3,
+                timelimit='d'         # Faqat bugungi natijalar (tezroq)
+            ))
+            if not results:
+                return None
+            search_text = "\n".join([f"{r['title']}: {r['body']}" for r in results])
+            return search_text
+    except Exception as e:
+        print(f"Qidiruv xatosi: {e}")
+        return None
+    
+    
+# --- MATN TAHLILI (YANGILANGAN VERSIYA) ---
+async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    
+    trigger_words = ["top", "qidir", "search", "yangilik", "kursi", "ob-havo"]
+    use_internet = any(word in user_text.lower() for word in trigger_words)
+
+    try:
+        context_text = ""
+        
+        if use_internet:
+            await update.message.reply_text("🌐 Internetdan qidirilmoqda...")
+            search_data = search_internet(user_text)
+            if search_data:
+                context_text = f"\n\nInternetdan topilgan ma'lumotlar:\n{search_data}"
+
+        prompt = (
+            f"Foydalanuvchi savoli: {user_text}"
+            f"{context_text}"
+            "\n\nAgar yuqorida internet ma'lumotlari bo'lsa, ulardan foydalanib eng so'nggi va aniq javobni o'zbek tilida ber."
+            "Javobing samimiy va professional bo'lsin."
+        )
+
+        # ✅ model (gemini_model emas!)
+        response = model.generate_content(prompt)
+        await update.message.reply_text(response.text)
+
+    except Exception as e:
+        print(f"Xato: {e}")
+        await update.message.reply_text(f"Xatolik: {str(e)}")
+
+# ==============================
+# 4️⃣ BOTNI ISHGA TUSHIRISH
+# ==============================
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    # Handlerlarni tartib bilan qo'shish
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
+    app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
+    app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
+    app.add_handler(MessageHandler(filters.VOICE, analyze_voice))
+
+    print("🤖 Bot ishga tushdi...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
