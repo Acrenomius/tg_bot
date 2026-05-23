@@ -1,0 +1,5 @@
+python-telegram-bot
+google-genai
+duckduckgo_search
+pymupdf
+python-dotenv
