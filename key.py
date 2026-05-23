@@ -28,7 +28,7 @@ TOKEN = "8559822278:AAEBAcDx-Zcf0y3o--_dBfYdK-Par2Orntk"  # <-- O'zingizning haq
 
 # ✅ YANGI TO'G'RI VARIANT: 
 # Railway'dagi 'Variables' bo'limiga GEMINI_API_KEY kalitini qo'shishni unutmang!
-client = genai.Client(api_key="AIzaSyCZACuX7si4powKYUhdT7P36LJbOV8eWvg")
+client = genai.Client(api_key="AIzaSyB8hD32txJLz4lYYVP1BYwx7O1gVhmJiLw")
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
