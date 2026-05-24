@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from dotenv import load_dotenv
 
 # Yangi rasmiy Google SDK (Gemini 2.5 uchun)
@@ -284,6 +285,15 @@ async def mpeg_translation_handler(update: Update, context: ContextTypes.DEFAULT
         # Xatoni terminalda aniq ko'rish uchun logging tizimi
         logging.error(f"Kritik nosozlik: {str(e)}")
         await update.message.reply_text("❌ Audio faylni qayta ishlashda kutilmagan texnik xatolik yuz berdi.")
+
+try:
+    # Audio faylni yuklab olish va buferga joylash kodi
+    pass
+except Exception as e:
+    # Konsolga aniq xatolik logini chiqarish
+    print(f"Xatolik yuz berdi: {e}")
+    traceback.print_exc()
+    
 # ==============================
 # 4️⃣ BOTNI ISHGA TUSHIRISH
 # ==============================
