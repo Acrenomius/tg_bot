@@ -229,35 +229,42 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- MP3 TRANSLATION HANDLER (TUZATILDI) ---
 async def mp3_translation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Vaqtincha fayl nomi
+    temp_file_path = f"temp_audio_{update.message.message_id}.mp3"
+    uploaded_file = None
+    
     try:
+        # 1. Foydalanuvchiga jarayon boshlanganini bildirish
         waiting_message = await update.message.reply_text(
             "⏳ <b>MP3 audio fayl qabul qilindi.</b> Tizim tovush to'lqinlarini tahlil qilmoqda, iltimos kuting...",
             parse_mode="HTML"
         )
 
+        # 2. Telegramdan faylni yuklab olish va server diskiga vaqtincha yozish
         audio_file = await update.message.audio.get_file()
-        
-        # ✅ TUZATISH: To'g'ridan-to'g'ri xavfsiz bytearray shaklida yuklab olamiz
-        audio_bytes = await audio_file.download_as_bytearray()
+        await audio_file.download_to_drive(custom_path=temp_file_path)
 
-        # Gemini API uchun part tayyorlash
-        audio_part = types.Part.from_bytes(
-            data=bytes(audio_bytes),
-            mime_type="audio/mp3"  # Ovoz turi moslashtirildi
+        # 3. KAFOLATLANGAN USUL: Faylni to'g'ridan-to'g'ri Google File API orqali yuklaymiz
+        # Bu usulda baytlar bilan ishlashdagi asinxron xatoliklar (httpx timeout) mutloq yuz bermaydi
+        uploaded_file = client.files.upload(
+            file=temp_file_path,
+            config=types.UploadFileConfig(mime_type="audio/mp3")
         )
 
         prompt = (
-            "Ushbu MP3 audio faylni diqqat bilan tingla. Undagi nutq qaysi tilda bo'lishidan qat'iy nazar "
-            "(ingliz, rus, o'zbek, nemis va h.k.), gapirilgan gaplarni aniq tushunib, mazmunini zarracha buzmagan holda "
+            "Ushbu audio faylni diqqat bilan tingla. Undagi nutq qaysi tilda bo'lishidan qat'iy nazar "
+            "gapirilgan gaplarni aniq tushunib, mazmunini zarracha buzmagan holda "
             "akademik va tushunarli o'zbek tiliga tarjima qilib ber. Faqat tarjima matnini qaytar, "
-            "ortiqcha izoh yoki 'mana sizga tarjima' kabi kirish so'zlarini mutloq yozma."
+            "ortiqcha izoh yoki 'mana tarjima' kabi kirish so'zlarini mutloq yozma."
         )
 
+        # 4. Modelga fayl obyekti va promptni yuboramiz
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=[audio_part, prompt]
+            contents=[uploaded_file, prompt]
         )
 
+        # 5. Kutish xabarini o'chirish
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_message.message_id)
         
         if response.text:
@@ -271,6 +278,21 @@ async def mp3_translation_handler(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logging.error(f"MP3 Tarjima Xatosi: {traceback.format_exc()}")
         await update.message.reply_text("❌ Audio faylni qayta ishlashda kutilmagan texnik xatolik yuz berdi.")
+        
+    finally:
+        # 6. TOZALASH: Vaqtincha fayllarni o'chiramiz (Server xotirasi to'lib qolmasligi uchun)
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass
+                
+        # Google bulutidan ham vaqtincha faylni o'chirish
+        if uploaded_file:
+            try:
+                client.files.delete(name=uploaded_file.name)
+            except Exception:
+                pass
     
 # ==============================
 # 4️⃣ BOTNI ISHGA TUSHIRISH
