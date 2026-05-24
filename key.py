@@ -227,72 +227,50 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Xatolik: {str(e)}")
 
 
-async def mpeg_translation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+# --- MP3 TRANSLATION HANDLER (TUZATILDI) ---
+async def mp3_translation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        # 1. Foydalanuvchini ogohlantirish
         waiting_message = await update.message.reply_text(
-            "⏳ <b>Audio fayl qabul qilindi.</b> Tizim asinxron xotira buferini tayyorlamoqda, iltimos kuting...",
+            "⏳ <b>MP3 audio fayl qabul qilindi.</b> Tizim tovush to'lqinlarini tahlil qilmoqda, iltimos kuting...",
             parse_mode="HTML"
         )
 
-        # 2. Telegramdan fayl metama'lumotlarini olish
         audio_file = await update.message.audio.get_file()
         
-        # 3. RAM buferini initsializatsiya qilish
-        audio_bytes_io = io.BytesIO()
-        
-        # DIQQAT: v20+ da out parametri qat'iy ko'rsatilishi shart!
-        await audio_file.download_to_memory(out=audio_bytes_io)
-        
-        # 4. Bufer ko'rsatkichini boshiga qaytarish va baytlarni ajratish
-        audio_bytes_io.seek(0)
-        audio_bytes = audio_bytes_io.getvalue()
+        # ✅ TUZATISH: To'g'ridan-to'g'ri xavfsiz bytearray shaklida yuklab olamiz
+        audio_bytes = await audio_file.download_as_bytearray()
 
-        # 5. Agar fayl bo'sh bo'lsa jarayonni to'xtatish
-        if not audio_bytes:
-            raise ValueError("Xotiraga yuklangan audio baytlar massivi bo'sh.")
-
-        # 6. Gemini uchun multimodal obyekt yaratish
+        # Gemini API uchun part tayyorlash
         audio_part = types.Part.from_bytes(
-            data=audio_bytes,
-            mime_type="audio/mpeg"  # Eng barqaror MIME standart
+            data=bytes(audio_bytes),
+            mime_type="audio/mp3"  # Ovoz turi moslashtirildi
         )
 
         prompt = (
-            "Ushbu audioni diqqat bilan eshit va undagi nutq mazmunini "
-            "zarracha o'zgartirmasdan akademik o'zbek tiliga tarjima qilib ber."
+            "Ushbu MP3 audio faylni diqqat bilan tingla. Undagi nutq qaysi tilda bo'lishidan qat'iy nazar "
+            "(ingliz, rus, o'zbek, nemis va h.k.), gapirilgan gaplarni aniq tushunib, mazmunini zarracha buzmagan holda "
+            "akademik va tushunarli o'zbek tiliga tarjima qilib ber. Faqat tarjima matnini qaytar, "
+            "ortiqcha izoh yoki 'mana sizga tarjima' kabi kirish so'zlarini mutloq yozma."
         )
 
-        # 7. Google GenAI API orqali modelga yuborish
-        # Eslatma: client obyekti global darajada yaratilgan bo'lishi shart!
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=[audio_part, prompt]
         )
 
-        # 8. Natijani qaytarish
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_message.message_id)
         
         if response.text:
             await update.message.reply_text(
-                f"🇺🇿 <b>Audio fayl tarjimasi:</b>\n\n{response.text}",
+                f"🇺🇿 <b>Audio faylning o'zbekcha tarjimasi:</b>\n\n{response.text}",
                 parse_mode="HTML"
             )
         else:
-            await update.message.reply_text("❌ Model audiodan matn generatsiya qila olmadi.")
+            await update.message.reply_text("❌ Audio fayldan nutqni ajratib olishda model xatolikka uchradi.")
 
     except Exception as e:
-        # Xatoni terminalda aniq ko'rish uchun logging tizimi
-        logging.error(f"Kritik nosozlik: {str(e)}")
+        logging.error(f"MP3 Tarjima Xatosi: {traceback.format_exc()}")
         await update.message.reply_text("❌ Audio faylni qayta ishlashda kutilmagan texnik xatolik yuz berdi.")
-
-try:
-    # Audio faylni yuklab olish va buferga joylash kodi
-    pass
-except Exception as e:
-    # Konsolga aniq xatolik logini chiqarish
-    print(f"Xatolik yuz berdi: {e}")
-    traceback.print_exc()
     
 # ==============================
 # 4️⃣ BOTNI ISHGA TUSHIRISH
@@ -306,7 +284,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     app.add_handler(MessageHandler(filters.VOICE, analyze_voice))
-    app.add_handler(MessageHandler(filters.AUDIO, mpeg_translation_handler))
+    app.add_handler(MessageHandler(filters.AUDIO, mp3_translation_handler))
 
     print("🤖 Bot ishga tushdi...")
     app.run_polling()
