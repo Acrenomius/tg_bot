@@ -25,7 +25,7 @@ from telegram.ext import (
 # 1️⃣ SOZLAMALAR
 # ==============================
 load_dotenv()
-TOKEN = "8559822278:AAEBAcDx-Zcf0y3o--_dBfYdK-Par2Orntk"  # <-- O'zingizning haqiqiy tokeningizni yozing
+TOKEN = "8559822278:AAFjJK95n-xQAezOz0hTPEgZPyYCRB6zlpI"  # <-- O'zingizning haqiqiy tokeningizni yozing
 
 # ✅ YANGI TO'G'RI VARIANT: 
 # Railway'dagi 'Variables' bo'limiga GEMINI_API_KEY kalitini qo'shishni unutmang!
