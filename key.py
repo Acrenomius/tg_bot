@@ -40,8 +40,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # ==============================
-# 2️⃣ START KOMANDASI HANDLERI
+# 2️⃣ START KOMANDASI VA TUGMALAR HANDLERI
 # ==============================
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -59,19 +60,18 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📝 <b>Matnli tahlil:</b> Istalgan savolingizga javob beraman, dasturlash kodlarini yozaman.\n"
         f"🌐 <b>Real vaqtda qidiruv (RAG):</b> Internetdan eng so'nggi yangiliklar va kurslarni topaman.\n"
         f"🖼 <b>Tasvirlarni aniqlash:</b> Yuborgan rasmingizni tahlil qilib, savollaringizga javob beraman.\n"
-        f"📄 <b>PDF Hujjatlar bilan ishlash:</b> Kitob yoki hujjatlarni o'qib, qisqacha xulosa qilaman.\n"
-        f"🎧 <b>Audio transkripsiya:</b> Ovozli yoki mp3 fayllarni eshitib, matnga o'giraman.\n\n"
-        f"<i>💡 Nimadan boshlashni bilmayapsizmi? To'g'ridan-to'g'ri menga biron bir fayl, ovoz yoki matn yuboring!</i>"
+        f"📄 <b>PDF Hujjatlar bilan ishlash:</b> Kitob yoki hujjatlarni o'qib, qisqacha xulosa qilaman.\n\n"
+        f"<i>💡 Nimadan boshlashni bilmayapsizmi? To'g'ridan-to'g'ri menga biron bir fayl, rasm yoki matn yuboring!</i>"
     )
     
+    # Ovozli xabar tugmasi olib tashlandi va inline menyu chiroyli holatga keltirildi
     keyboard = [
         [
             InlineKeyboardButton("🌐 Internetdan qidirish (RAG)", callback_data="help_rag"),
             InlineKeyboardButton("📄 PDF tahlil qilish", callback_data="help_pdf")
         ],
         [
-            InlineKeyboardButton("🖼 Rasm va Computer Vision", callback_data="help_vision"),
-            InlineKeyboardButton("🎧 Ovozli xabarlar (Audio)", callback_data="help_audio")
+            InlineKeyboardButton("🖼 Rasm va Computer Vision", callback_data="help_vision")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -89,14 +89,13 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     zudlik bilan javob qaytaruvchi asinxron handler.
     """
     query = update.callback_query
-    # Telegram interfeysida soat rasmi aylanib qolmasligi uchun so'rovni tasdiqlaymiz
     await query.answer()
     
-    # Qaysi tugma bosilganiga qarab javob matnini shakllantiramiz
     if query.data == "help_pdf":
         await query.message.reply_text(
             "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
-            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida).\n Men uni tadqiq qilib, sizga uni yoritib beraman"
+            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida). "
+            "Men uni tadqiq qilib, sizga uni yoritib beraman.",
             parse_mode="HTML"
         )
     elif query.data == "help_rag":
@@ -174,8 +173,9 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"PDF xatosi: {e}")
         await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi.")
 
+
 # ==============================
-# 4️⃣ MULTIMODAL (RASM VA OVOZ) FUNKSIYALAR
+# 4️⃣ MULTIMODAL (RASM) FUNKSIYASI
 # ==============================
 async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -204,36 +204,6 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Rasm xatosi: {e}")
         await update.message.reply_text("Rasm tahlilida xatolik yuz berdi.")
 
-async def analyze_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.message.reply_text("Ovozli xabar eshitilmoqda... 🎧")
-    try:
-        voice_file = await update.message.voice.get_file()
-        voice_bytearray = await voice_file.download_as_bytearray()
-        
-        audio_part = types.Part.from_bytes(
-            data=bytes(voice_bytearray),
-            mime_type="audio/ogg"
-        )
-        
-        prompt = (
-            "Ushbu audio xabarni tingla va o'zbek tilida mantiqiy javob ber. "
-            "Agar savol bo'lsa javob qaytar, agar shunchaki fikr bo'lsa unga munosabat bildir. "
-            "Javobing samimiy va tushunarli bo'lsin."
-        )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt, audio_part]
-        )
-        
-        if response.text:
-            await status_msg.edit_text(f"🎤 <b>Javob:</b>\n\n{response.text}", parse_mode="HTML")
-        else:
-            await status_msg.edit_text("Ovozni tushunib bo'lmadi, qaytadan yozib ko'ring.")
-
-    except Exception as e:
-        logger.error(f"Ovoz xatosi: {e}")
-        await status_msg.edit_text("Ovozli xabarni tahlil qilishda texnik xatolik yuz berdi. ✨")
 
 # ==============================
 # 5️⃣ INTERNET QIDIRUV VA MATN TAHLILI (RAG)
@@ -256,6 +226,7 @@ def search_internet(query):
         logger.error(f"Qidiruv xatosi: {e}")
         return None
     
+
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     trigger_words = ["top", "qidir", "search", "yangilik", "kursi", "ob-havo"]
@@ -268,7 +239,7 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             search_data = search_internet(user_text)
             if search_data:
                 context_text = f"\n\nInternetdan topilgan ma'lumotlar:\n{search_data}"
-                await status_msg.delete()  # "Qidirilmoqda..." xabarini o'chirish
+                await status_msg.delete()  # Xabarni o'chirish
 
         prompt = (
             f"Foydalanuvchi savoli: {user_text}"
@@ -287,25 +258,26 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Matn xatosi: {e}")
         await update.message.reply_text("Xabarni qayta ishlashda xatolik yuz berdi.")
 
+
 # ==============================
 # 6️⃣ BOTNI ISHGA TUSHIRISH (MAIN)
 # ==============================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # CRITICAL TARTIB: Avval komandalar, keyin multimodal filtrlar, eng oxirida umumiy matn!
+    # Tartiblangan asinxron marshrutizatsiya
     app.add_handler(CommandHandler("start", start_handler))
-    
     app.add_handler(CallbackQueryHandler(button_callback_handler))
+    
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
-    app.add_handler(MessageHandler(filters.VOICE, analyze_voice))
     
-    # Umumiy matn handlerini eng oxiriga qo'yamiz, aks holda u hamma narsani bloklaydi
+    # Matn filtri eng oxirida
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
 
     print("🤖 Bot muvaffaqiyatli ishga tushdi (Polling)...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
