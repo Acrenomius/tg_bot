@@ -272,7 +272,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Handlerlarni tartib bilan qo'shish
-    app.add_handler(CommandHandler("start", start))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
