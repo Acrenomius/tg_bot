@@ -18,6 +18,7 @@ from telegram.ext import (
     ContextTypes,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters
 )
 
@@ -80,6 +81,50 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
+
+
+async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Foydalanuvchi menyudagi interaktiv tugmalarni bosganda
+    zudlik bilan javob qaytaruvchi asinxron handler.
+    """
+    query = update.callback_query
+    # Telegram interfeysida soat rasmi aylanib qolmasligi uchun so'rovni tasdiqlaymiz
+    await query.answer()
+    
+    # Qaysi tugma bosilganiga qarab javob matnini shakllantiramiz
+    if query.data == "help_pdf":
+        await query.message.reply_text(
+            "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
+            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida).\n"
+            "Men uni RAM xotirasida asinxron parchalab, ichidagi eng muhim va yorqin "
+            "faktlarni sizga sarlavhalarsiz, toza matn ko'rinishida taqdim etaman!",
+            parse_mode="HTML"
+        )
+    elif query.data == "help_rag":
+        await query.message.reply_text(
+            "🌐 <b>Internetdan qidirish (RAG) bo'limi:</b>\n\n"
+            "Matnli xabaringiz ichida <i>'top', 'qidir', 'yangilik', 'kursi', 'ob-havo'</i> "
+            "kabi so'zlar qatnashsa, men avtomatik ravishda DuckDuckGo tizimi orqali global "
+            "internetga ulanaman va eng aktual ma'lumotni Gemini modeliga sintez qilib beraman.",
+            parse_mode="HTML"
+        )
+    elif query.data == "help_vision":
+        await query.message.reply_text(
+            "🖼 <b>Computer Vision (Rasm tahlili) bo'limi:</b>\n\n"
+            "Menga istalgan tasvirni (foto) yuboring. Men undagi ob'ektlarni tahlil qilaman "
+            "yoki rasm ichidagi xorijiy matnlarni semantik ma'nosini buzmagan holda o'zbek tiliga o'giraman.",
+            parse_mode="HTML"
+        )
+    elif query.data == "help_audio":
+        await query.message.reply_text(
+            "🎧 <b>Ovozli xabarlar va Audio bo'limi:</b>\n\n"
+            "Menga mikrofondan ovozli xabar yozib yuboring. Men nutqingizni raqamlashtirib, "
+            "tinglayman va sizga samimiy, intellektual javob qaytaraman.",
+            parse_mode="HTML"
+        )
+
+
 
 # ==============================
 # 3️⃣ PDF TAHLILI FUNKSIYASI
@@ -261,6 +306,7 @@ def main():
     # CRITICAL TARTIB: Avval komandalar, keyin multimodal filtrlar, eng oxirida umumiy matn!
     app.add_handler(CommandHandler("start", start_handler))
     
+    app.add_handler(CallbackQueryHandler(button_callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     app.add_handler(MessageHandler(filters.VOICE, analyze_voice))
