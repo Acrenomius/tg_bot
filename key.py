@@ -28,11 +28,15 @@ from telegram.ext import (
 load_dotenv()
 
 # Tokenni muhit o'zgaruvchisidan yoki xavfsiz joydan olamiz
-TOKEN = os.getenv("TELEGRAM_TOKEN", "8559822278:AAFjJK95n-xQAezOz0hTPEgZPyYCRB6zlpI")
-
-# API kalitni Railway Variables bo'limidan olish tavsiya etiladi
-GEMINI_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBYrXFC_BDDFmnSILE-cd98eXXdZVbRL5Y")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_KEY)
+
+# Agar kalitlar topilmasa, dastur ishga tushmasidan oldin aniq xatolik bersin
+if not TOKEN:
+    raise ValueError("XATOLIK: 'TELEGRAM_TOKEN' muhit o'zgaruvchisi topilmadi!")
+if not GEMINI_KEY:
+    raise ValueError("XATOLIK: 'GEMINI_API_KEY' muhit o'zgaruvchisi topilmadi!")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
