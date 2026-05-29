@@ -9,6 +9,8 @@ from google.genai import types
 # PDF va Bepul Internet qidiruv kutubxonalari
 import fitz  # PyMuPDF
 from duckduckgo_search import DDGS
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
 
 # Telegram Bot API kutubxonalari
 from telegram import Update, constants
@@ -224,6 +226,53 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Xato: {e}")
         await update.message.reply_text(f"Xatolik: {str(e)}")
+
+
+
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Foydalanuvchi botni ishga tushirganda tizim imkoniyatlarini va
+    yo'riqnomani vizual tugmalar bilan ko'rsatuvchi asinxron handler.
+    """
+    user_name = update.effective_user.first_name
+    
+    # 1. Foydalanuvchi uchun professional va tushunarli qo'llanma matni (HTML formatda)
+    welcome_text = (
+        f"👋 <b>Assalomu alaykum, {user_name}!</b>\n\n"
+        f"🤖 Men — <b>Gemini 2.5</b> neyron tarmog'i negizida ishlovchi multi-funksional "
+        f"intellektual asistentman. Men bilan oddiy suhbat qurishingiz yoki murakkab "
+        f"multimodal vazifalarni bajarishingiz mumkin.\n\n"
+        f"<b>📌 Men nimalar qila olaman?</b>\n"
+        f" can 📝 <b>Matnli tahlil:</b> Istalgan savolingizga javob beraman, dasturlash kodlarini yozaman.\n"
+        f"🌐 <b>Real vaqtda qidiruv (RAG):</b> Internetdan eng so'nggi yangiliklar va kurslarni topaman.\n"
+        f"🖼 <b>Tasvirlarni aniqlash:</b> Yuborgan rasmingizni tahlil qilib, savollaringizga javob beraman.\n"
+        f"📄 <b>PDF Hujjatlar bilan ishlash:</b> Kitob yoki hujjatlarni o'qib, qisqacha xulosa qilaman.\n"
+        f"🎧 <b>Audio transkripsiya:</b> Ovozli yoki mp3 fayllarni eshitib, matnga o'giraman.\n\n"
+        f"<i>💡 Nimadan boshlashni bilmayapsizmi? Quyidagi tugmalardan birini tanlang yoki to'g'ridan-to'g'ri menga biron bir fayl/matn yuboring!</i>"
+    )
+    
+    # 2. Foydalanuvchi adashib qolmasligi uchun interaktiv inline tugmalar (Menyu)
+    keyboard = [
+        [
+            InlineKeyboardButton("🌐 Internetdan qidirish (RAG)", callback_data="help_rag"),
+            InlineKeyboardButton("📄 PDF tahlil qilish", callback_data="help_pdf")
+        ],
+        [
+            InlineKeyboardButton("🖼 Rasm va Computer Vision", callback_data="help_vision"),
+            InlineKeyboardButton("🎧 Ovozli xabarlar (Audio)", callback_data="help_audio")
+        ],
+        [
+            InlineKeyboardButton("🤖 Bot haqida batafsil info", callback_data="help_info")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # 3. Vizual HTML formatida xabarni menyu bilan birga foydalanuvchiga yuborish
+    await update.message.reply_text(
+        text=welcome_text,
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
 
 # ==============================
 # 4️⃣ BOTNI ISHGA TUSHIRISH
