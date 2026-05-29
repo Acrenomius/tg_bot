@@ -237,7 +237,6 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     app.add_handler(MessageHandler(filters.VOICE, analyze_voice))
-    app.add_handler(MessageHandler(filters.AUDIO, mp3_translation_handler))
 
     print("🤖 Bot ishga tushdi...")
     app.run_polling()
