@@ -96,9 +96,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     if query.data == "help_pdf":
         await query.message.reply_text(
             "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
-            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida).\n"
-            "Men uni RAM xotirasida asinxron parchalab, ichidagi eng muhim va yorqin "
-            "faktlarni sizga sarlavhalarsiz, toza matn ko'rinishida taqdim etaman!",
+            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida).\n Men uni tadqiq qilib, sizga uni yoritib beraman"
             parse_mode="HTML"
         )
     elif query.data == "help_rag":
@@ -112,18 +110,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif query.data == "help_vision":
         await query.message.reply_text(
             "🖼 <b>Computer Vision (Rasm tahlili) bo'limi:</b>\n\n"
-            "Menga istalgan tasvirni (foto) yuboring. Men undagi ob'ektlarni tahlil qilaman "
-            "yoki rasm ichidagi xorijiy matnlarni semantik ma'nosini buzmagan holda o'zbek tiliga o'giraman.",
+            "Menga istalgan rasmni yuboring. Men undagi ob'ektlarni tahlil qilaman "
+            "yoki rasm ichidagi matnlarni o'zbek tiliga o'giraman.",
             parse_mode="HTML"
         )
-    elif query.data == "help_audio":
-        await query.message.reply_text(
-            "🎧 <b>Ovozli xabarlar va Audio bo'limi:</b>\n\n"
-            "Menga mikrofondan ovozli xabar yozib yuboring. Men nutqingizni raqamlashtirib, "
-            "tinglayman va sizga samimiy, intellektual javob qaytaraman.",
-            parse_mode="HTML"
-        )
-
 
 
 # ==============================
