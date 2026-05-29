@@ -103,15 +103,6 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================
 # 3️⃣ MATN VA RASM FUNKSIYALARI
 # ==============================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-       "✨ *Assalomu alaykum!* ✨\n\n"
-        "Botimizga xush kelibsiz.\n\n"
-        "❓ Bot bo'yicha savollaringiz bo'lsa:\n"
-        "➖➖➖➖➖➖➖➖➖➖\n"
-        "👨‍💻 @acrenomius\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
