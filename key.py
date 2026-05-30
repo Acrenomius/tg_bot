@@ -150,6 +150,8 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
                 "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
                 "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
+                "Eng kerakli va foydalanuvchiga yetkaziladigan matnlarni chiqar, unchalik kop matnni foydalanuvchi o'qiy olmaydi"
+                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar"
                 f"\n\nMatn: {clean_text[:15000]}"
             )
             
