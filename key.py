@@ -222,63 +222,24 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================
 # 5️⃣ INTERNET QIDIRUV VA MATN TAHLILI (RAG)
 # ==============================
-def search_internet(query):
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(
-                query,
-                region='uz-uz',
-                safesearch='moderate',
-                max_results=3,
-                timelimit='d'
-            ))
-            if not results:
-                return None
-            search_text = "\n".join([f"{r['title']}: {r['body']}" for r in results])
-            return search_text
-    except Exception as e:
-        logger.error(f"Qidiruv xatosi: {e}")
-        return None
-
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Xavfsizlik tekshiruvi: Agar xabarda matn bo'lmasa, qaytamiz
     if not update.message or not update.message.text:
         return
 
     user_text = update.message.text
-    trigger_words = ["top", "qidir", "search", "yangilik", "kursi", "ob-havo"]
-    use_internet = any(word in user_text.lower() for word in trigger_words)
 
     try:
-        context_text = ""
-        status_msg = None
-
-        # 1. Agar trigger so'z bo'lsa, internetdan qidirib, topilgan matnni contextga olamiz
-        if use_internet:
-            status_msg = await update.message.reply_text("🌐 Internetdan ma'lumot qidirilmoqda...")
-            search_data = search_internet(user_text)
-            if search_data:
-                context_text = f"\n\nInternetdan topilgan manba matni:\n{search_data}"
-            
-            # Xabarni o'chirishda asinxron xatolik bo'lmasligi uchun xavfsiz boshqaruv
-            if status_msg:
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
-
-        # 2. Gemini uchun Tarjimonlik Rolini (System Prompt) belgilaymiz
+        # Faqat va faqat tarjima uchun qat'iy prompt (System Constraint)
         prompt = (
-            "Siz professional va yuqori malakali sinxron tarjimonsiz. Sizning yagona vazifangiz "
-            "quyida berilgan matnlarni (u qaysi tilda bo'lishidan qat'i nazar: ingliz, rus, koreys, nemis va h.k.) "
-            "o'zbek tiliga (kirill yoki lotin yozuvida, asl formatini saqlagan holda) akademik va badiiy jihatdan mukammal tarjima qilish.\n\n"
-            "DIQQAT QILING: O'zingizdan hech qanday qo'shimcha fikr, kirish so'zi, xulosa yoki 'Mana sizga tarjima' kabi gaplarni QO'SHMANG. "
-            "Faqat va faqat tarjima matnining o'zini qaytaring.\n\n"
-            f"Foydalanuvchi yuborgan matn/savol: {user_text}"
-            f"{context_text}"
-            "\n\nYuklangan vazifa: Yuqoridagi matnlar ichidagi barcha axborot va ma'lumotlarni o'zbek tiliga professional darajada o'girib bering."
+            "Siz professional va yuqori malakali sinxron tarjimonsiz. Vazifangiz berilgan matnni "
+            "qaysi tilda bo'lishidan qat'i nazar (ingliz, rus va h.k.) o'zbek tiliga mukammal tarjima qilish.\n"
+            "DIQQAT: O'zingizdan hech qanday izoh, 'Mana tarjima' kabi kirish so'zlari yoki xulosa qo'shmang! "
+            "Faqat tarjimaning o'zini qaytaring.\n\n"
+            f"Tarjima qilinishi kerak bo'lgan matn:\n{user_text}"
         )
 
-        # 3. Modelga so'rov yuborish
+        # Gemini modeliga so'rov yuborish
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
@@ -287,8 +248,87 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_translation = response.text.strip() if response.text else ""
 
         if final_translation:
-            # 🌟 Telegram 4000 simvol limitidan oshib ketmaslik uchun xavfsiz chunking (Smart Split)
+            # 🌟 Aqlli chunking (Telegram 4000 simvol limitidan oshmaslik va so'zlarni bo'lmaslik)
             text_to_send = final_translation
+            max_length = 4000
+            chat_id = update.effective_chat.id
+            
+            while len(text_to_send) > 0:
+                # Agar qolgan qism limitdan kichik bo'lsa, hammasini yuborib sikldan chiqamiz
+                if len(text_to_send) <= max_length:
+                    await context.bot.send_message(chat_id=chat_id, text=text_to_send)
+                    break
+                
+                # Orqaga qaytuvchi marker qidiruvi (\n -> Nuqta -> Probel)
+                split_index = text_to_send.rfind('\n', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = text_to_send.rfind('. ', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = text_to_send.rfind(' ', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = max_length
+                    
+                # Bo'lakni xavfsiz qirqib olib yuboramiz
+                chunk = text_to_send[:split_index].strip()
+                if chunk:
+                    await context.bot.send_message(chat_id=chat_id, text=chunk)
+                
+                # Yuborilgan qismni matndan o'chiramiz
+                text_to_send = text_to_send[split_index:].strip()
+        else:
+            await update.message.reply_text("Matnni tarjima qilishda xatolik yuz berdi.")
+
+    except Exception as e:
+        logger.error(f"Tarjima xatosi: {e}")
+        await update.message.reply_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
+
+
+
+# ==========================================
+# 2. INTERNETDAN QIDIRUV FUNKSIYASI (/search)
+# ==========================================
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
+    # /search so'zidan keyingi qidiruv matnini ajratib olamiz
+    user_text = update.message.text
+    query = user_text.replace("/search", "").strip()
+
+    if not query:
+        await update.message.reply_text("⚠️ Iltimos, qidirmoqchi bo'lgan ma'lumotingizni yozing.\nMashalan: `/search O'zbekiston yangiliklari`")
+        return
+
+    status_msg = await update.message.reply_text("🌐 Internetdan eng so'nggi ma'lumotlar qidirilmoqda...")
+
+    try:
+        search_data = search_internet(query)
+        
+        if not search_data:
+            await status_msg.edit_text("Siz so'ragan ma'lumot bo'yicha internetdan hech narsa topilmadi.")
+            return
+
+        await status_msg.edit_text("Ma'lumot topildi. O'zbek tilida sintez qilinmoqda... ✨")
+
+        prompt = (
+            f"Foydalanuvchi internetdan quyidagilarni qidirdi: {query}\n\n"
+            f"Internetdan topilgan manbalar:\n{search_data}\n\n"
+            "Vazifa: Ushbu ma'lumotlar asosida eng so'nggi va aniq javobni tahlil qilib, "
+            "foydalanuvchiga sof o'zbek tilida, tushunarli va professional tarzda yetkazib ber."
+        )
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+
+        final_response = response.text.strip() if response.text else ""
+
+        if final_response:
+            await status_msg.delete() # Yuklanish xabarini o'chiramiz
+            
+            # Aqlli chunking bilan qidiruv natijasini yuborish
+            text_to_send = final_response
             max_length = 4000
             chat_id = update.effective_chat.id
             
@@ -311,11 +351,11 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 text_to_send = text_to_send[split_index:].strip()
         else:
-            await update.message.reply_text("Matnni tarjima qilishda muammo yuz berdi.")
+            await status_msg.edit_text("Qidiruv natijasini tahlil qilishda xatolik yuz berdi.")
 
     except Exception as e:
-        logger.error(f"Matn tarjimasi xatosi: {e}")
-        await update.message.reply_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
+        logger.error(f"Komanda qidiruv xatosi: {e}")
+        await update.message.reply_text("Internet qidiruv jarayonida tizimli xatolik yuz berdi.")
 
 
 # ==============================
@@ -333,6 +373,7 @@ def main():
     
     # Matn filtri eng oxirida
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
+    application.add_handler(CommandHandler("search", search_command))
 
     print("🤖 Bot muvaffaqiyatli ishga tushdi (Polling)...")
     app.run_polling()
