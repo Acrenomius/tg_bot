@@ -123,20 +123,16 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 # 3️⃣ PDF TAHLILI FUNKSIYASI
 # ==============================
 async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Faqat PDF fayllarni tekshirish
-    if not update.message or not update.message.document:
-        return
     if not update.message.document.file_name.lower().endswith('.pdf'):
         return
 
     status_msg = await update.message.reply_text("PDF qabul qilindi. Matn o'qilmoqda... 📄")
-    
+    file = await update.message.document.get_file()
+
     try:
-        # 1. Faylni yuklab olish va PyMuPDF orqali parsing qilish
-        file = await update.message.document.get_file()
         pdf_bytes = await file.download_as_bytearray()
-        
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
         full_text = ""
         for page in doc:
             full_text += page.get_text()
@@ -144,81 +140,53 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         clean_text = full_text.strip()
         
-        if len(clean_text) <= 10:
-            await status_msg.edit_text("PDF ichida o'qish uchun etarli matn topilmadi.")
-            return
-
-        # 2. Status xabarini yangilash
-        await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
-        
-        # 3. Gemini Prompt muhandisligi
-        prompt = (
-            "Quyidagi PDF hujjat matnini diqqat bilan tahlil qil va uning eng muhim qismlarini "
-            "chiroyli tarzda va foydalanuvchi tushunadigan tarzda yetkaz. Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
-            "Kitob ichidagi o'qilganda eng yorqin bo'lgan matnlarni tushuntirganingdan keyin yozib qo'y. "
-            "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
-            "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
-            "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
-            f"\n\nMatn: {clean_text[:15000]}"
-        )
-        
-        # 4. Modelga so'rov yuborish
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        
-        final_output = response.text.strip() if response.text else ""
-        
-        # 5. Keraksiz prefikslarni tozalash
-        filter_words = ["Hujjatning qisqacha mazmuni:", "Hujjat mazmuni:", "Tahlil:", "**Hujjatning qisqacha mazmuni:**"]
-        for word in filter_words:
-            if final_output.startswith(word):
-                final_output = final_output.replace(word, "", 1).strip()
-
-        if not final_output:
-            await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
-            return
-
-        # 🔥 ENG MUHIM: Xabarni o'chirish o'rniga textini tozalaymiz (Xavfsiz asinxron oqim)
-        # delete() ba'zan Telegram tomonida sessiya uzilishiga olib keladi, edit_text xavfsizroq.
-        await status_msg.edit_text("Tahlil yakunlandi! Quyida natija taqdim etiladi: 👇")
-        
-        # 6. Regressiv Leksik Segmentatsiya (Aqlli chunking)
-        text_to_send = final_output
-        max_length = 4000
-        chat_id = update.effective_chat.id  # Guruhlarda ham adashmaslik uchun aniq chat_id
-        
-        while len(text_to_send) > 0:
-            if len(text_to_send) <= max_length:
-                await context.bot.send_message(chat_id=chat_id, text=text_to_send)
-                break
+        if len(clean_text) > 10:
+            await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
             
-            # Orqaga qaytuvchi marker qidiruvi (\n -> Nuqta -> Probel)
-            split_index = text_to_send.rfind('\n', 0, max_length)
-            if split_index == -1 or split_index == 0:
-                split_index = text_to_send.rfind('. ', 0, max_length)
-            if split_index == -1 or split_index == 0:
-                split_index = text_to_send.rfind(' ', 0, max_length)
-            if split_index == -1 or split_index == 0:
-                split_index = max_length
+            prompt = (
+                "Quyidagi PDF hujjat matnini diqqat bilan tahlil qil va uning eng muhim qismlarini "
+                "chiroyli tarzda va foydalanuvchi tushunadigan tarzda yetkaz. Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
+                "Kitob ichidagi o'qilganda eng yorqin bo'lgan matnlarni tushuntirganingdan keyin yozib qo'y. "
+                "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
+                "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
+                "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
+                f"\n\nMatn: {clean_text[:15000]}"
+            )
+            
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            final_output = response.text.strip() if response.text else ""
+            
+            filter_words = ["Hujjatning qisqacha mazmuni:", "Hujjat mazmuni:", "Tahlil:", "**Hujjatning qisqacha mazmuni:**"]
+            for word in filter_words:
+                if final_output.startswith(word):
+                    final_output = final_output.replace(word, "", 1).strip()
+
+            if final_output:
+                # "Tahlil qilinmoqda..." xabarini o'chirib yuboramiz
+                await status_msg.delete()
                 
-            chunk = text_to_send[:split_index].strip()
-            if chunk:
-                await context.bot.send_message(chat_id=chat_id, text=chunk)
+                # 🌟 TELEGRAM LİMİTİNİ AYLANIB O'TISH MECHANIZMI (Chunking)
+                # Agar matn 4000 tadan ko'p bo'lsa, qismlarga bo'lib ketma-ket yuboramiz
+                max_length = 4000
+                for i in range(0, len(final_output), max_length):
+                    chunk = final_output[i:i + max_length]
+                    await update.message.reply_text(chunk)
+            else:
+                await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
             
-            text_to_send = text_to_send[split_index:].strip()
+        else:
+            await status_msg.edit_text("PDF ichida o'qish uchun matn topilmadi.")
 
     except Exception as e:
-        logger.error(f"Kengaytirilgan PDF xatosi: {e}")
-        # Foydalanuvchiga xatolik haqida aniqroq xabar berish
+        logger.error(f"PDF xatosi: {e}")
         try:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, 
-                text=f"Xatolik yuz berdi. Tizim logi: {str(e)[:100]}"
-            )
+            await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi yoki matn uzatishda cheklov buzildi.")
         except Exception:
-            pass
+            await update.message.reply_text("PDF tahlilida xatolik yuz berdi.")
 
 # ==============================
 # 4️⃣ MULTIMODAL (RASM) FUNKSIYASI
