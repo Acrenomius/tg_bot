@@ -144,13 +144,11 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
             
             prompt = (
-                "Quyidagi PDF hujjat matnini diqqat bilan tahlil qil va uning eng muhim qismlarini "
-                "chiroyli tarzda va foydalanuvchi tushunadigan tarzda yetkaz. Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
+               " Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
                 "Kitob ichidagi o'qilganda eng yorqin bo'lgan matnlarni tushuntirganingdan keyin yozib qo'y. "
                 "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
                 "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
                 "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
-                "Eng kerakli va foydalanuvchiga yetkaziladigan matnlarni chiqar, unchalik kop matnni foydalanuvchi o'qiy olmaydi"
                 "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar"
                 f"\n\nMatn: {clean_text[:15000]}"
             )
