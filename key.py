@@ -7,9 +7,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# PDF va Bepul Internet qidiruv kutubxonalari
+# PDF kutubxonasi
 import fitz  # PyMuPDF
-from duckduckgo_search import DDGS
 
 # Telegram Bot API kutubxonalari
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -27,16 +26,15 @@ from telegram.ext import (
 # ==============================
 load_dotenv()
 
-# Tokenni muhit o'zgaruvchisidan yoki xavfsiz joydan olamiz
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_KEY)
 
-# Agar kalitlar topilmasa, dastur ishga tushmasidan oldin aniq xatolik bersin
 if not TOKEN:
     raise ValueError("XATOLIK: 'TELEGRAM_TOKEN' muhit o'zgaruvchisi topilmadi!")
 if not GEMINI_KEY:
     raise ValueError("XATOLIK: 'GEMINI_API_KEY' muhit o'zgaruvchisi topilmadi!")
+
+client = genai.Client(api_key=GEMINI_KEY)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -49,33 +47,27 @@ logger = logging.getLogger(__name__)
 # 2️⃣ START KOMANDASI VA TUGMALAR HANDLERI
 # ==============================
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Foydalanuvchi botni ishga tushirganda tizim imkoniyatlarini va
-    yo'riqnomani vizual tugmalar bilan ko'rsatuvchi asinxron handler.
-    """
     user_name = update.effective_user.first_name
     
     welcome_text = (
         f"👋 <b>Assalomu alaykum, {user_name}!</b>\n\n"
-        f"🤖 Men — <b>Gemini 2.5</b> neyron tarmog'i negizida ishlovchi multi-funksional "
-        f"intellektual asistentman. Men bilan oddiy suhbat qurishingiz yoki murakkab "
-        f"multimodal vazifalarni bajarishingiz mumkin.\n\n"
-        f"<b>📌 Men nimalar qila olaman?</b>\n"
-        f"📝 <b>Matnli tahlil:</b> Istalgan savolingizga javob beraman, dasturlash kodlarini yozaman.\n"
-        f"🌐 <b>Real vaqtda qidiruv (RAG):</b> Internetdan eng so'nggi yangiliklar va kurslarni topaman.\n"
-        f"🖼 <b>Tasvirlarni aniqlash:</b> Yuborgan rasmingizni tahlil qilib, savollaringizga javob beraman.\n"
-        f"📄 <b>PDF Hujjatlar bilan ishlash:</b> Kitob yoki hujjatlarni o'qib, qisqacha xulosa qilaman.\n\n"
-        f"<i>💡 Nimadan boshlashni bilmayapsizmi? To'g'ridan-to'g'ri menga biron bir fayl, rasm yoki matn yuboring!</i>"
+        f"🤖 Men — <b>Gemini 2.5</b> neyron tarmog'i negizida ishlovchi universal "
+        f"<b>Ko'p tilli Tarjimon Asistentman</b>. Menga yuborilgan har qanday ma'lumotni zudlik bilan o'zbek tiliga o'girib beraman.\n\n"
+        f"<b>📌 Tizim imkoniyatlari:</b>\n"
+        f"📝 <b>Matnli tarjima:</b> Istalgan tildagi uzun matn yoki gaplarni yuboring, men ularni akademik va badiiy jihatdan o'zbekcha qilaman.\n"
+        f"📄 <b>PDF Hujjatlar tarjimasi:</b> Xorijiy tildagi kitob yoki maqolalarni o'qib, o'zbek tilida tahliliy sharh tayyorlayman.\n"
+        f"🖼 <b>Tasvirlardagi matn (Vision):</b> Yuborgan rasmingiz ichidagi chet tillaridagi yozuvlarni aniqlab, o'zbekchaga o'giraman.\n\n"
+        f"<i>💡 To'g'ridan-to'g'ri menga biron bir matn, PDF fayl yoki rasm yuborib sinab ko'ring!</i>"
     )
     
-    # Ovozli xabar tugmasi olib tashlandi va inline menyu chiroyli holatga keltirildi
+    # 🌟 Internet qidiruvi olib tashlanib, "Matn tarjima qilish" tugmasiga o'zgartirildi!
     keyboard = [
         [
-            InlineKeyboardButton("🌐 Internetdan qidirish (RAG)", callback_data="help_rag"),
+            InlineKeyboardButton("📝 Matn tarjima qilish", callback_data="help_translation"),
             InlineKeyboardButton("📄 PDF tahlil qilish", callback_data="help_pdf")
         ],
         [
-            InlineKeyboardButton("🖼 Rasm va Computer Vision", callback_data="help_vision")
+            InlineKeyboardButton("🖼 Rasm tahlili (Vision)", callback_data="help_vision")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -88,41 +80,38 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Foydalanuvchi menyudagi interaktiv tugmalarni bosganda
-    zudlik bilan javob qaytaruvchi asinxron handler.
-    """
     query = update.callback_query
     await query.answer()
     
-    if query.data == "help_pdf":
+    if query.data == "help_translation":
         await query.message.reply_text(
-            "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
-            "Menga istalgan elektron kitob yoki PDF hujjatni yuboring (fayl ko'rinishida). "
-            "Men uni tadqiq qilib, sizga uni yoritib beraman.",
+            "📝 <b>Matn tarjima qilish bo'limi:</b>\n\n"
+            "Menga istalgan tildagi (ingliz, rus, nemis va h.k.) matnni to'g'ridan-to'g'ri yuboring. "
+            "Tizim xabaringizni qabul qilishi bilan avtomatik ravishda kontekstual sinxron tarjimani boshlaydi.",
             parse_mode="HTML"
         )
-    elif query.data == "help_rag":
+    elif query.data == "help_pdf":
         await query.message.reply_text(
-            "🌐 <b>Internetdan qidirish (RAG) bo'limi:</b>\n\n"
-            "Matnli xabaringiz ichida <i>'top', 'qidir', 'yangilik', 'kursi', 'ob-havo'</i> "
-            "kabi so'zlar qatnashsa, men avtomatik ravishda DuckDuckGo tizimi orqali global "
-            "internetga ulanaman va eng aktual ma'lumotni Gemini modeliga sintez qilib beraman.",
+            "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
+            "Menga chet tilidagi elektron kitob yoki PDF hujjatni fayl ko'rinishida yuboring. "
+            "Men uning matnini to'liq tahlil qilib, o'zbek tilida sizga mazmunini tushuntirib beraman.",
             parse_mode="HTML"
         )
     elif query.data == "help_vision":
         await query.message.reply_text(
-            "🖼 <b>Computer Vision (Rasm tahlili) bo'limi:</b>\n\n"
-            "Menga istalgan rasmni yuboring. Men undagi ob'ektlarni tahlil qilaman "
-            "yoki rasm ichidagi matnlarni o'zbek tiliga o'giraman.",
+            "🖼 <b>Computer Vision (Rasm tarjimasi) bo'limi:</b>\n\n"
+            "Menga istalgan rasmni yuboring. Men undagi xorijiy yozuvlarni "
+            "o'zbek tiliga kontekstual ma'nosini buzmagan holda o'girib beraman.",
             parse_mode="HTML"
         )
 
 
 # ==============================
-# 3️⃣ PDF TAHLILI FUNKSIYASI
+# 3️⃣ PDF TAHLILI FUNKSIYASI (LOG XATOLIGI TUZATILDI)
 # ==============================
 async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.document:
+        return
     if not update.message.document.file_name.lower().endswith('.pdf'):
         return
 
@@ -144,13 +133,13 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
             
             prompt = (
-               " Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
+                "Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
                 "Kitob ichidagi o'qilganda eng yorqin bo'lgan matnlarni tushuntirganingdan keyin yozib qo'y. "
                 "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
                 "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
                 "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
-                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar"
-                f"\n\nMatn: {clean_text[:15000]}"
+                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.\n\n"
+                f"Matn: {clean_text[:12000]}"  # Resurs limitidan oshmaslik uchun xavfsiz chegara
             )
             
             response = client.models.generate_content(
@@ -166,15 +155,31 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     final_output = final_output.replace(word, "", 1).strip()
 
             if final_output:
-                # "Tahlil qilinmoqda..." xabarini o'chirib yuboramiz
                 await status_msg.delete()
                 
-                # 🌟 TELEGRAM LİMİTİNİ AYLANIB O'TISH MECHANIZMI (Chunking)
-                # Agar matn 4000 tadan ko'p bo'lsa, qismlarga bo'lib ketma-ket yuboramiz
-                max_length = 4000
-                for i in range(0, len(final_output), max_length):
-                    chunk = final_output[i:i + max_length]
-                    await update.message.reply_text(chunk)
+                # 🌟 Message_too_long xatosini butunlay yo'qotuvchi regressiv xavfsiz chunking (3500 belgi)
+                text_to_send = final_output
+                max_length = 3500
+                chat_id = update.effective_chat.id
+                
+                while len(text_to_send) > 0:
+                    if len(text_to_send) <= max_length:
+                        await context.bot.send_message(chat_id=chat_id, text=text_to_send)
+                        break
+                    
+                    split_index = text_to_send.rfind('\n', 0, max_length)
+                    if split_index == -1 or split_index == 0:
+                        split_index = text_to_send.rfind('. ', 0, max_length)
+                    if split_index == -1 or split_index == 0:
+                        split_index = text_to_send.rfind(' ', 0, max_length)
+                    if split_index == -1 or split_index == 0:
+                        split_index = max_length
+                        
+                    chunk = text_to_send[:split_index].strip()
+                    if chunk:
+                        await context.bot.send_message(chat_id=chat_id, text=chunk)
+                    
+                    text_to_send = text_to_send[split_index:].strip()
             else:
                 await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
             
@@ -184,16 +189,17 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"PDF xatosi: {e}")
         try:
-            await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi yoki matn uzatishda cheklov buzildi.")
+            await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi.")
         except Exception:
             await update.message.reply_text("PDF tahlilida xatolik yuz berdi.")
+
 
 # ==============================
 # 4️⃣ MULTIMODAL (RASM) FUNKSIYASI
 # ==============================
 async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        status_msg = await update.message.reply_text("Rasm o'qilmoqda... 🔍")
+        status_msg = await update.message.reply_text("Rasm o'qilmoqda va matn aniqlanmoqda... 🔍")
         photo_file = await update.message.photo[-1].get_file()
         image_bytearray = await photo_file.download_as_bytearray()
 
@@ -213,24 +219,25 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model='gemini-2.5-flash',
             contents=[prompt, image_part]
         )
-        await status_msg.edit_text(response.text if response.text else "Matn topilmadi.")
+        await status_msg.edit_text(response.text if response.text else "Rasmda tarjima qilinadigan matn topilmadi.")
     except Exception as e:
         logger.error(f"Rasm xatosi: {e}")
         await update.message.reply_text("Rasm tahlilida xatolik yuz berdi.")
 
 
 # ==============================
-# 5️⃣ INTERNET QIDIRUV VA MATN TAHLILI (RAG)
+# 5️⃣ SOZ MATN TARJIMASI (YUKLANISH SO'ZI BILAN)
 # ==============================
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Xavfsizlik tekshiruvi: Agar xabarda matn bo'lmasa, qaytamiz
     if not update.message or not update.message.text:
         return
 
     user_text = update.message.text
+    
+    # ⏳ Har doim tarjima oldidan chiquvchi yuklanish status xabari
+    status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
 
     try:
-        # Faqat va faqat tarjima uchun qat'iy prompt (System Constraint)
         prompt = (
             "Siz professional va yuqori malakali sinxron tarjimonsiz. Vazifangiz berilgan matnni "
             "qaysi tilda bo'lishidan qat'i nazar (ingliz, rus va h.k.) o'zbek tiliga mukammal tarjima qilish.\n"
@@ -239,7 +246,6 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Tarjima qilinishi kerak bo'lgan matn:\n{user_text}"
         )
 
-        # Gemini modeliga so'rov yuborish
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
@@ -248,18 +254,19 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_translation = response.text.strip() if response.text else ""
 
         if final_translation:
-            # 🌟 Aqlli chunking (Telegram 4000 simvol limitidan oshmaslik va so'zlarni bo'lmaslik)
+            # Tarjima tayyor bo'lishi bilanoq yuklanish statusini o'chiramiz
+            await status_msg.delete()
+            
+            # Xavfsiz lingo-chunking (3500 belgi limit)
             text_to_send = final_translation
-            max_length = 4000
+            max_length = 3500
             chat_id = update.effective_chat.id
             
             while len(text_to_send) > 0:
-                # Agar qolgan qism limitdan kichik bo'lsa, hammasini yuborib sikldan chiqamiz
                 if len(text_to_send) <= max_length:
                     await context.bot.send_message(chat_id=chat_id, text=text_to_send)
                     break
                 
-                # Orqaga qaytuvchi marker qidiruvi (\n -> Nuqta -> Probel)
                 split_index = text_to_send.rfind('\n', 0, max_length)
                 if split_index == -1 or split_index == 0:
                     split_index = text_to_send.rfind('. ', 0, max_length)
@@ -268,94 +275,20 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if split_index == -1 or split_index == 0:
                     split_index = max_length
                     
-                # Bo'lakni xavfsiz qirqib olib yuboramiz
                 chunk = text_to_send[:split_index].strip()
                 if chunk:
                     await context.bot.send_message(chat_id=chat_id, text=chunk)
                 
-                # Yuborilgan qismni matndan o'chiramiz
                 text_to_send = text_to_send[split_index:].strip()
         else:
-            await update.message.reply_text("Matnni tarjima qilishda xatolik yuz berdi.")
+            await status_msg.edit_text("Matnni tarjima qilishda muammo yuz berdi.")
 
     except Exception as e:
         logger.error(f"Tarjima xatosi: {e}")
-        await update.message.reply_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
-
-
-
-# ==========================================
-# 2. INTERNETDAN QIDIRUV FUNKSIYASI (/search)
-# ==========================================
-async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    # /search so'zidan keyingi qidiruv matnini ajratib olamiz
-    user_text = update.message.text
-    query = user_text.replace("/search", "").strip()
-
-    if not query:
-        await update.message.reply_text("⚠️ Iltimos, qidirmoqchi bo'lgan ma'lumotingizni yozing.\nMashalan: `/search O'zbekiston yangiliklari`")
-        return
-
-    status_msg = await update.message.reply_text("🌐 Internetdan eng so'nggi ma'lumotlar qidirilmoqda...")
-
-    try:
-        search_data = search_internet(query)
-        
-        if not search_data:
-            await status_msg.edit_text("Siz so'ragan ma'lumot bo'yicha internetdan hech narsa topilmadi.")
-            return
-
-        await status_msg.edit_text("Ma'lumot topildi. O'zbek tilida sintez qilinmoqda... ✨")
-
-        prompt = (
-            f"Foydalanuvchi internetdan quyidagilarni qidirdi: {query}\n\n"
-            f"Internetdan topilgan manbalar:\n{search_data}\n\n"
-            "Vazifa: Ushbu ma'lumotlar asosida eng so'nggi va aniq javobni tahlil qilib, "
-            "foydalanuvchiga sof o'zbek tilida, tushunarli va professional tarzda yetkazib ber."
-        )
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-
-        final_response = response.text.strip() if response.text else ""
-
-        if final_response:
-            await status_msg.delete() # Yuklanish xabarini o'chiramiz
-            
-            # Aqlli chunking bilan qidiruv natijasini yuborish
-            text_to_send = final_response
-            max_length = 4000
-            chat_id = update.effective_chat.id
-            
-            while len(text_to_send) > 0:
-                if len(text_to_send) <= max_length:
-                    await context.bot.send_message(chat_id=chat_id, text=text_to_send)
-                    break
-                
-                split_index = text_to_send.rfind('\n', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = text_to_send.rfind('. ', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = text_to_send.rfind(' ', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = max_length
-                    
-                chunk = text_to_send[:split_index].strip()
-                if chunk:
-                    await context.bot.send_message(chat_id=chat_id, text=chunk)
-                
-                text_to_send = text_to_send[split_index:].strip()
-        else:
-            await status_msg.edit_text("Qidiruv natijasini tahlil qilishda xatolik yuz berdi.")
-
-    except Exception as e:
-        logger.error(f"Komanda qidiruv xatosi: {e}")
-        await update.message.reply_text("Internet qidiruv jarayonida tizimli xatolik yuz berdi.")
+        try:
+            await status_msg.edit_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
+        except Exception:
+            await update.message.reply_text("Tizimli xatolik yuz berdi.")
 
 
 # ==============================
@@ -364,16 +297,15 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Tartiblangan asinxron marshrutizatsiya
+    # To'g'rilangan asinxron marshrutlar
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CallbackQueryHandler(button_callback_handler))
     
     app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     
-    # Matn filtri eng oxirida
+    # Matn handler har doim eng pastda
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
-    application.add_handler(CommandHandler("search", search_command))
 
     print("🤖 Bot muvaffaqiyatli ishga tushdi (Polling)...")
     app.run_polling()
