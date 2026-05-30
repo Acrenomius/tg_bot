@@ -239,38 +239,83 @@ def search_internet(query):
     except Exception as e:
         logger.error(f"Qidiruv xatosi: {e}")
         return None
-    
 
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
     user_text = update.message.text
     trigger_words = ["top", "qidir", "search", "yangilik", "kursi", "ob-havo"]
     use_internet = any(word in user_text.lower() for word in trigger_words)
 
     try:
         context_text = ""
+        status_msg = None
+
+        # 1. Agar trigger so'z bo'lsa, internetdan qidirib, topilgan matnni contextga olamiz
         if use_internet:
-            status_msg = await update.message.reply_text("🌐 Internetdan qidirilmoqda...")
+            status_msg = await update.message.reply_text("🌐 Internetdan ma'lumot qidirilmoqda...")
             search_data = search_internet(user_text)
             if search_data:
-                context_text = f"\n\nInternetdan topilgan ma'lumotlar:\n{search_data}"
-                await status_msg.delete()  # Xabarni o'chirish
+                context_text = f"\n\nInternetdan topilgan manba matni:\n{search_data}"
+            
+            # Xabarni o'chirishda asinxron xatolik bo'lmasligi uchun xavfsiz boshqaruv
+            if status_msg:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
 
+        # 2. Gemini uchun Tarjimonlik Rolini (System Prompt) belgilaymiz
         prompt = (
-            f"Foydalanuvchi savoli: {user_text}"
+            "Siz professional va yuqori malakali sinxron tarjimonsiz. Sizning yagona vazifangiz "
+            "quyida berilgan matnlarni (u qaysi tilda bo'lishidan qat'i nazar: ingliz, rus, koreys, nemis va h.k.) "
+            "o'zbek tiliga (kirill yoki lotin yozuvida, asl formatini saqlagan holda) akademik va badiiy jihatdan mukammal tarjima qilish.\n\n"
+            "DIQQAT QILING: O'zingizdan hech qanday qo'shimcha fikr, kirish so'zi, xulosa yoki 'Mana sizga tarjima' kabi gaplarni QO'SHMANG. "
+            "Faqat va faqat tarjima matnining o'zini qaytaring.\n\n"
+            f"Foydalanuvchi yuborgan matn/savol: {user_text}"
             f"{context_text}"
-            "\n\nAgar yuqorida internet ma'lumotlari bo'lsa, ulardan foydalanib eng so'nggi va aniq javobni o'zbek tilida ber."
-            "Javobing samimiy va professional bo'lsin."
+            "\n\nYuklangan vazifa: Yuqoridagi matnlar ichidagi barcha axborot va ma'lumotlarni o'zbek tiliga professional darajada o'girib bering."
         )
 
+        # 3. Modelga so'rov yuborish
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
         )
-        await update.message.reply_text(response.text)
+        
+        final_translation = response.text.strip() if response.text else ""
+
+        if final_translation:
+            # 🌟 Telegram 4000 simvol limitidan oshib ketmaslik uchun xavfsiz chunking (Smart Split)
+            text_to_send = final_translation
+            max_length = 4000
+            chat_id = update.effective_chat.id
+            
+            while len(text_to_send) > 0:
+                if len(text_to_send) <= max_length:
+                    await context.bot.send_message(chat_id=chat_id, text=text_to_send)
+                    break
+                
+                split_index = text_to_send.rfind('\n', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = text_to_send.rfind('. ', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = text_to_send.rfind(' ', 0, max_length)
+                if split_index == -1 or split_index == 0:
+                    split_index = max_length
+                    
+                chunk = text_to_send[:split_index].strip()
+                if chunk:
+                    await context.bot.send_message(chat_id=chat_id, text=chunk)
+                
+                text_to_send = text_to_send[split_index:].strip()
+        else:
+            await update.message.reply_text("Matnni tarjima qilishda muammo yuz berdi.")
 
     except Exception as e:
-        logger.error(f"Matn xatosi: {e}")
-        await update.message.reply_text("Xabarni qayta ishlashda xatolik yuz berdi.")
+        logger.error(f"Matn tarjimasi xatosi: {e}")
+        await update.message.reply_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
 
 
 # ==============================
