@@ -165,8 +165,8 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if final_output.startswith(word):
                     final_output = final_output.replace(word, "", 1).strip()
 
-           if final_output:
-                # "Tahlil qilinmoqda..." xabarini o'chirib yuboramiz
+            if final_output:
+                # "Tahlil qilinmoqda..." yuklanish xabarini o'chirib yuboramiz
                 await status_msg.delete()
                 
                 # 🌟 AQLLI CHUNKING (Matnni so'z yoki gap o'rtasidan bo'lmaslik algoritmi)
@@ -179,7 +179,7 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_text(text_to_send)
                         break
                     
-                    # 4000-belgidan orqaga qarab eng yaqin gap oxirini (nuqtani) qidiramiz
+                    # 4000-belgidan orqaga qarab eng yaqin gap yoki qator oxirini qidiramiz
                     split_index = text_to_send.rfind('\n', 0, max_length)
                     if split_index == -1:
                         split_index = text_to_send.rfind('. ', 0, max_length)
@@ -190,12 +190,12 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if split_index == -1 or split_index == 0:
                         split_index = max_length
                         
-                    # Bo'lakni olamiz va yuboramiz
+                    # Bo'lakni kesib olamiz va yuboramiz
                     chunk = text_to_send[:split_index].strip()
                     if chunk:
                         await update.message.reply_text(chunk)
                     
-                    # Yuborilgan qismni matndan kesib tashlab, siklni davom ettiramiz
+                    # Yuborilgan qismni asosiy matndan qirqib tashlaymiz
                     text_to_send = text_to_send[split_index:].strip()
             else:
                 await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
