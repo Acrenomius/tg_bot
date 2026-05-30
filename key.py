@@ -166,7 +166,15 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     final_output = final_output.replace(word, "", 1).strip()
 
             if final_output:
-                await status_msg.edit_text(final_output)
+                # "Tahlil qilinmoqda..." xabarini o'chirib yuboramiz
+                await status_msg.delete()
+                
+                # 🌟 TELEGRAM LİMİTİNİ AYLANIB O'TISH MECHANIZMI (Chunking)
+                # Agar matn 4000 tadan ko'p bo'lsa, qismlarga bo'lib ketma-ket yuboramiz
+                max_length = 4000
+                for i in range(0, len(final_output), max_length):
+                    chunk = final_output[i:i + max_length]
+                    await update.message.reply_text(chunk)
             else:
                 await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
             
@@ -175,7 +183,10 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"PDF xatosi: {e}")
-        await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi.")
+        try:
+            await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi yoki matn uzatishda cheklov buzildi.")
+        except Exception:
+            await update.message.reply_text("PDF tahlilida xatolik yuz berdi.")
 
 
 # ==============================
