@@ -4,3 +4,4 @@ python-dotenv
 python-telegram-bot
 google-genai
 pymupdf
+python-multipart
