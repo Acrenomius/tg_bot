@@ -1,9 +1,14 @@
 import os
 import io
 import logging
+import asyncio
 from dotenv import load_dotenv
 
-# Yangi rasmiy Google SDK (Gemini 2.5 uchun)
+# FastAPI kutubxonalari (Ilova API yo'lagi uchun)
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+
+# Yangi rasmiy Google SDK (Gemini uchun)
 from google import genai
 from google.genai import types
 
@@ -34,7 +39,20 @@ if not TOKEN:
 if not GEMINI_KEY:
     raise ValueError("XATOLIK: 'GEMINI_API_KEY' muhit o'zgaruvchisi topilmadi!")
 
+# Gemini klienti
 client = genai.Client(api_key=GEMINI_KEY)
+
+# FastAPI veb-server obyekti (Alohida ilova ulanishi uchun)
+app = FastAPI(title="Universal AI Translator Platform API")
+
+# Har qanday qurilma (Ilova) ulanishi uchun CORS ruxsatnomalari
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -60,7 +78,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<i>💡 To'g'ridan-to'g'ri menga biron bir matn, PDF fayl yoki rasm yuborib sinab ko'ring!</i>"
     )
     
-    # 🌟 Internet qidiruvi olib tashlanib, "Matn tarjima qilish" tugmasiga o'zgartirildi!
     keyboard = [
         [
             InlineKeyboardButton("📝 Matn tarjima qilish", callback_data="help_translation"),
@@ -107,7 +124,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
 
 # ==============================
-# 3️⃣ PDF TAHLILI FUNKSIYASI (LOG XATOLIGI TUZATILDI)
+# 3️⃣ PDF TAHLILI FUNKSIYASI
 # ==============================
 async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.document:
@@ -157,7 +174,6 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if final_output:
                 await status_msg.delete()
                 
-                # 🌟 Message_too_long xatosini butunlay yo'qotuvchi regressiv xavfsiz chunking (3500 belgi)
                 text_to_send = final_output
                 max_length = 3500
                 chat_id = update.effective_chat.id
@@ -226,15 +242,13 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==============================
-# 5️⃣ SOZ MATN TARJIMASI (YUKLANISH SO'ZI BILAN)
+# 5️⃣ SOZ MATN TARJIMASI
 # ==============================
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
     user_text = update.message.text
-    
-    # ⏳ Har doim tarjima oldidan chiquvchi yuklanish status xabari
     status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
 
     try:
@@ -254,10 +268,8 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_translation = response.text.strip() if response.text else ""
 
         if final_translation:
-            # Tarjima tayyor bo'lishi bilanoq yuklanish statusini o'chiramiz
             await status_msg.delete()
             
-            # Xavfsiz lingo-chunking (3500 belgi limit)
             text_to_send = final_translation
             max_length = 3500
             chat_id = update.effective_chat.id
@@ -291,54 +303,70 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Tizimli xatolik yuz berdi.")
 
 
-@app.post("/telegram-webhook")
-async def telegram_bot_handler(update: dict):
-    # Bu yerda siz yozgan eski bot logikasi ishlayveradi
-    return {"status": "ok"}
+# ==============================
+# 🌐 6️⃣ FASTAPI YO'LAKLARI (ALOHIDA MOBIL ILOVA UCHUN API)
+# ==============================
+
+@app.get("/")
+async def root_status():
+    return {"status": "running", "platform": "Universal AI Center"}
 
 @app.post("/api/v1/app-process")
 async def independent_app_handler(file: UploadFile = File(...)):
     """
-    Alohida mobil ilovadan (App) keladigan rasm yoki fayllarni 
-    qabul qilib, Gemini API'ga yuboruvchi yangi yo'lak (Route).
+    Alohida kiber-neon mobil ilovadan (App) keladigan rasm yoki fayllarni 
+    qabul qilib, Gemini API'ga yuboruvchi mustaqil ochiq yo'lak (API Endpoint).
     """
-    file_bytes = await file.read()
-    
-    # Gemini modelini chaqirish (eski botingizdagi model nomini yozasiz)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    contents = [
-        {"mime_type": file.content_type, "data": file_bytes},
-        "Ushbu texnik hujjat yoki tasvirni o'zbek tiliga terminologik aniqlikda o'gir va tahlil qil."
-    ]
-    
-    response = model.generate_content(contents)
-    
-    return {
-        "status": "success",
-        "data": response.text
-    }
+    try:
+        file_bytes = await file.read()
+        
+        # Fayl turini aniqlash (Mime Type)
+        mime_type = file.content_type
+        
+        image_part = types.Part.from_bytes(
+            data=bytes(file_bytes),
+            mime_type=mime_type
+        )
+        
+        prompt = (
+            "Siz alohida mobil ilovaning intellektual yadrosisiz. "
+            "Ushbu kelgan texnik hujjat yoki tasvirdagi matnlarni o'zbek tiliga terminologik aniqlikda o'gir va mukammal tahlil qil."
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[prompt, image_part]
+        )
+        
+        return {
+            "status": "success",
+            "data": response.text if response.text else "Ma'lumot topilmadi."
+        }
+    except Exception as e:
+        logger.error(f"App API xatosi: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 # ==============================
-# 6️⃣ BOTNI ISHGA TUSHIRISH (MAIN)
+# ⚡ 7️⃣ BACKGROUND EVENT (FASTAPI ISHGA TUSHGANDA BOTNI HAM QO'SHIB YONDIRISH)
 # ==============================
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
 
-    # To'g'rilangan asinxron marshrutlar
-    app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CallbackQueryHandler(button_callback_handler))
-    
-    app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
-    app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
-    
-    # Matn handler har doim eng pastda
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
+@app.on_event("startup")
+async def startup_event():
+    """
+    FastAPI server (Railway) yonganda Telegram bot polling xizmatini 
+    orqa fonda asinxron ravishda birga ishga tushiradi.
+    """
+    bot_app = ApplicationBuilder().token(TOKEN).build()
 
-    print("🤖 Bot muvaffaqiyatli ishga tushdi (Polling)...")
-    app.run_polling()
+    bot_app.add_handler(CommandHandler("start", start_handler))
+    bot_app.add_handler(CallbackQueryHandler(button_callback_handler))
+    bot_app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
+    bot_app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
 
-
-if __name__ == "__main__":
-    main()
+    # Pollingni FastAPI asinxron sikli ichida xavfsiz ishga tushirish
+    asyncio.create_task(bot_app.initialize())
+    asyncio.create_task(bot_app.updater.start_polling())
+    asyncio.create_task(bot_app.start())
+    print("🤖 Telegram Bot orqa fonda parallel muvaffaqiyatli ishga tushdi (Background Polling)...")
