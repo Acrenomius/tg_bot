@@ -348,15 +348,13 @@ async def independent_app_handler(file: UploadFile = File(...)):
 
 
 # ==============================
-# ⚡ 7️⃣ BACKGROUND EVENT (FASTAPI ISHGA TUSHGANDA BOTNI HAM QO'SHIB YONDIRISH)
+# ⚡ 7️⃣ BACKGROUND EVENT (XAVFSIZ VA BLOKLAMAYDIGAN VARIANT)
 # ==============================
 
-@app.on_event("startup")
-async def startup_event():
-    """
-    FastAPI server (Railway) yonganda Telegram bot polling xizmatini 
-    orqa fonda asinxron ravishda birga ishga tushiradi.
-    """
+async def run_bot_in_background():
+    """Botni mutlaqo alohida fonda, FastAPIga xalaqit bermagan holda yondirish"""
+    await asyncio.sleep(2)  # FastAPI o'z portini ochib olishi uchun 2 soniya kutish
+    
     bot_app = ApplicationBuilder().token(TOKEN).build()
 
     bot_app.add_handler(CommandHandler("start", start_handler))
@@ -365,8 +363,18 @@ async def startup_event():
     bot_app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
 
-    # Pollingni FastAPI asinxron sikli ichida xavfsiz ishga tushirish
-    asyncio.create_task(bot_app.initialize())
-    asyncio.create_task(bot_app.updater.start_polling())
-    asyncio.create_task(bot_app.start())
-    print("🤖 Telegram Bot orqa fonda parallel muvaffaqiyatli ishga tushdi (Background Polling)...")
+    try:
+        await bot_app.initialize()
+        await bot_app.start()
+        # Veb-serverni muzlatib qo'ymaslik uchun start_pollingni fonda ushlab turamiz
+        await bot_app.updater.start_polling(drop_pending_updates=True)
+        print("🤖 Telegram Bot fonda muvaffaqiyatli uchdi!")
+    except Exception as e:
+        logger.error(f"Botni fonda yoqishda xato: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    # Eng muhim joyi: Botni asyncio.ensure_future orqali parallel oqimga otamiz,
+    # shunda FastAPI zudlik bilan o'z ishini yakunlab, Railway portini ochib beradi!
+    asyncio.ensure_future(run_bot_in_background())
+    print("🌐 FastAPI o'z portini tekshirishga tayyorladi.")
