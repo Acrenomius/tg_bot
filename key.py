@@ -291,6 +291,35 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Tizimli xatolik yuz berdi.")
 
 
+@app.post("/telegram-webhook")
+async def telegram_bot_handler(update: dict):
+    # Bu yerda siz yozgan eski bot logikasi ishlayveradi
+    return {"status": "ok"}
+
+@app.post("/api/v1/app-process")
+async def independent_app_handler(file: UploadFile = File(...)):
+    """
+    Alohida mobil ilovadan (App) keladigan rasm yoki fayllarni 
+    qabul qilib, Gemini API'ga yuboruvchi yangi yo'lak (Route).
+    """
+    file_bytes = await file.read()
+    
+    # Gemini modelini chaqirish (eski botingizdagi model nomini yozasiz)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    contents = [
+        {"mime_type": file.content_type, "data": file_bytes},
+        "Ushbu texnik hujjat yoki tasvirni o'zbek tiliga terminologik aniqlikda o'gir va tahlil qil."
+    ]
+    
+    response = model.generate_content(contents)
+    
+    return {
+        "status": "success",
+        "data": response.text
+    }
+
+
 # ==============================
 # 6️⃣ BOTNI ISHGA TUSHIRISH (MAIN)
 # ==============================
