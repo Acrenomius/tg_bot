@@ -348,8 +348,9 @@ async def independent_app_handler(file: UploadFile = File(...)):
 
 
 # ==============================
-# ⚡ 7️⃣ BACKGROUND EVENT (XAVFSIZ VA BLOKLAMAYDIGAN VARIANT)
+# ⚡ 7️⃣ LIFESPAN & BACKGROUND EVENT (YANGI STANDART)
 # ==============================
+from contextlib import asynccontextmanager
 
 async def run_bot_in_background():
     """Botni mutlaqo alohida fonda, FastAPIga xalaqit bermagan holda yondirish"""
@@ -366,15 +367,19 @@ async def run_bot_in_background():
     try:
         await bot_app.initialize()
         await bot_app.start()
-        # Veb-serverni muzlatib qo'ymaslik uchun start_pollingni fonda ushlab turamiz
         await bot_app.updater.start_polling(drop_pending_updates=True)
         print("🤖 Telegram Bot fonda muvaffaqiyatli uchdi!")
     except Exception as e:
         logger.error(f"Botni fonda yoqishda xato: {e}")
 
-@app.on_event("startup")
-async def startup_event():
-    # Eng muhim joyi: Botni asyncio.ensure_future orqali parallel oqimga otamiz,
-    # shunda FastAPI zudlik bilan o'z ishini yakunlab, Railway portini ochib beradi!
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Dastur yoqilayotganda (Startup) bajariladigan qism:
     asyncio.ensure_future(run_bot_in_background())
     print("🌐 FastAPI o'z portini tekshirishga tayyorladi.")
+    yield
+    # Dastur o'chayotganda (Shutdown) bajariladigan qism (agar kerak bo'lsa):
+    print("🌐 Server to'xtatildi.")
+
+# FastAPI obyektiga lifespan mexanizmini ulaymiz
+app.router.lifespan_context = lifespan
