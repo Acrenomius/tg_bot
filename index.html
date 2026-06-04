@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Multimodal Standalone App</title>
+    <style>
+        /* To'liq kiber-qora fon va yorqin yashil neon */
+        body {
+            background-color: #0A0A0E;
+            color: #39FF14;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .header {
+            text-align: center;
+            padding: 10px 0;
+            font-weight: bold;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px #39FF14;
+            border-bottom: 1px dashed #39FF14;
+            margin-bottom: 20px;
+        }
+
+        /* Multimodal yuklash zonasi */
+        .upload-zone {
+            flex: 1;
+            border: 2px dashed #8A2BE2;
+            box-shadow: inset 0 0 15px rgba(138, 43, 226, 0.2), 0 0 10px rgba(138, 43, 226, 0.2);
+            background-color: #12121A;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .upload-zone:active {
+            border-color: #39FF14;
+            box-shadow: inset 0 0 15px rgba(57, 255, 20, 0.2), 0 0 15px #39FF14;
+        }
+
+        .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px #8A2BE2;
+        }
+
+        .status-text {
+            color: #FFFFFF;
+            font-size: 0.9rem;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        /* Pastki qismdagi boshqaruv paneli */
+        .control-panel {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            background: #0A0A0E;
+            border: 2px solid #39FF14;
+            color: #39FF14;
+            padding: 15px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-family: monospace;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);
+            text-transform: uppercase;
+        }
+
+        .btn-purple {
+            border-color: #8A2BE2;
+            color: #8A2BE2;
+            box-shadow: 0 0 8px rgba(138, 43, 226, 0.3);
+        }
+
+        /* "AI is thinking..." animatsiyasi qatlami */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 14, 0.9);
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scanner-line {
+            width: 80%;
+            height: 2px;
+            background: #39FF14;
+            box-shadow: 0 0 15px #39FF14;
+            animation: scan 2s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { transform: translateY(-100px); }
+            50% { transform: translateY(100px); }
+            100% { transform: translateY(-100px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">CORE_SYSTEM_v1.0</div>
+
+    <!-- Asosiy skanerlash va yuklash maydoni -->
+    <div class="upload-zone" onclick="triggerFileSelect()">
+        <div class="icon">📸</div>
+        <div class="status-text">TAP TO CAPTURE IMAGE<br>OR UPLOAD DOC (PDF)</div>
+        <input type="file" id="fileInput" style="display: none;" onchange="handleFile(event)">
+    </div>
+
+    <!-- Tugmalar paneli -->
+    <div class="control-panel">
+        <button class="btn" onclick="startAIAction()">Skanerlash</button>
+        <button class="btn btn-purple" onclick="openHistory()">Tarix</button>
+    </div>
+
+    <!-- Tizim yuklanish (AI is thinking) holati -->
+    <div id="loadingOverlay" class="overlay">
+        <div class="scanner-line"></div>
+        <p style="font-family: monospace; margin-top: 20px; color: #39FF14;">AI PROCESSING IN PROGRESS...</p>
+    </div>
+
+    <script>
+        function triggerFileSelect() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                document.querySelector('.status-text').innerHTML = `FAYL YUKLANDI:<br><span style="color:#8A2BE2">${file.name}</span>`;
+            }
+        }
+
+        function startAIAction() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            
+            // Bu yerda Railway'dagi tayyor backend API manzilingizga HTTP POST so'rovi yuboriladi
+            // Masalan: fetch('https://your-railway-api.app/process', { method: 'POST', ... })
+            
+            setTimeout(() => {
+                document.getElementById('loadingOverlay').style.display = 'none';
+                alert("Tahlil yakunlandi! Natija ekranga chiqariladi.");
+            }, 3000); // Simulyatsiya
+        }
+        
+        function openHistory() {
+            alert("Lokal keshdan olingan eski tahlillar ro'yxati.");
+        }
+    </script>
+</body>
+</html>
