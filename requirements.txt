@@ -5,5 +5,5 @@ python-telegram-bot
 google-genai
 pymupdf
 python-multipart
-moviepy
+moviepy>=2.0.0
 openai-whisper
