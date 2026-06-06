@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
+from moviepy.editor import VideoFileClip
+import whisper
+
 # PDF kutubxonasi
 import fitz  # PyMuPDF
 
@@ -347,6 +350,61 @@ async def independent_app_handler(file: UploadFile = File(...)):
         return {"status": "error", "message": str(e)}
 
 
+async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    video = update.message.video
+    
+    # 1. Video davomiyligini tekshirish (120 soniya = 2 minut)
+    if video.duration > 120:
+        await update.message.reply_text("❌ Kechirasiz, video davomiyligi eng ko'pi bilan 2 minut bo'lishi kerak!")
+        return
+
+    status_message = await update.message.reply_text("⏳ Video qabul qilindi. Qayta ishlanmoqda, iltimos kuting...")
+
+    # 2. Videoni yuklab olish
+    video_file = await context.bot.get_file(video.file_id)
+    video_path = "user_video.mp4"
+    audio_path = "extracted_audio.mp3"
+    await video_file.download_to_drive(video_path)
+
+    try:
+        # 3. Videodan audioni ajratib olish
+        await status_message.edit_text("🎵 Videodan audio ajratib olinmoqda...")
+        clip = VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, logger=None)
+        clip.close()
+
+        # 4. Speech-to-Text: Ovozni matnga aylantirish va tarjima qilish
+        await status_message.edit_text("🗣️ Ovoz matnga o'girilmoqda va tarjima qilinmoqda...")
+        
+        # Whisper o'zi avtomatik tildan qat'iy nazar matnni inglizcha yoki o'zbekchaga o'gira oladi
+        # 'task="translate"' ingliz tiliga tarjima qilish uchun, biz esa o'zbekcha matnni Gemini orqali olamiz
+        result = model.transcribe(audio_path)
+        original_text = result["text"]
+
+        # 5. Gemini AI orqali matnni chiroyli O'zbek tiliga o'girish
+        await status_message.edit_text("🤖 Sun'iy intellekt matnni o'zbekchaga o'girmoqda...")
+        
+        prompt = f"Quyidagi matn videodan ajratib olindi. Uni o'zbek tiliga juda chiroyli va tushunarli qilib tarjima qilib ber:\n\n{original_text}"
+        
+        # Bu yerda o'zingizning amaldagi Gemini model chaqiruvingizni ishlating
+        # Masalan: response = model_gemini.generate_content(prompt)
+        # sarlavha = response.text
+        
+        # Hozircha namunaviy javob:
+        uzbek_translation = f"Asl matn: {original_text}\n\n🇺🇿 O'zbekcha tarjimasi:\n[Bu yerga Gemini qaytargan tarjima joylashadi]"
+
+        # Natijani foydalanuvchiga yuborish
+        await status_message.edit_text(uzbek_translation)
+
+    except Exception as e:
+        await status_message.edit_text(f"❌ Xatolik yuz berdi: {str(e)}")
+    
+    finally:
+        # Vaqtinchalik fayllarni o'chirib tashlaymiz
+        if os.path.exists(video_path): os.remove(video_path)
+        if os.path.exists(audio_path): os.remove(audio_path)
+
+
 # ==============================
 # ⚡ 7️⃣ LIFESPAN & BACKGROUND EVENT (YANGI STANDART)
 # ==============================
@@ -363,6 +421,7 @@ async def run_bot_in_background():
     bot_app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     bot_app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video_translation))
 
     try:
         await bot_app.initialize()
