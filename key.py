@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
-from moviepy.editor import VideoFileClip
+# Eski qatorni o'rniga mana buni qo'ying:
+from moviepy import VideoFileClip
 import whisper
 
 # PDF kutubxonasi
