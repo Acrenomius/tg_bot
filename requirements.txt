@@ -5,3 +5,5 @@ python-telegram-bot
 google-genai
 pymupdf
 python-multipart
+moviepy
+openai-whisper
