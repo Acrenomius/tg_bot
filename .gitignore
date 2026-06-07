@@ -1,0 +1,15 @@
+# Muhit o'zgaruvchilari (Maxfiy kalitlar)
+.env
+*.env
+
+# Python kesh fayllari
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Vaqtincha saqlanadigan multimedia fayllari
+*.mp4
+*.mp3
+*.jpg
+*.jpeg
+*.png
