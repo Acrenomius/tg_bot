@@ -224,11 +224,14 @@ Hujjat matni:
 # 4️⃣ MULTIMODAL (RASM) FUNKSIYASI
 # ==============================
 async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   try:
+    try:
         status_msg = await update.message.reply_text("Rasm o'qilmoqda va matn aniqlanmoqda... 🔍")
+        
+        # Eng yuqori sifatli rasmni olish
         photo_file = await update.message.photo[-1].get_file()
         image_bytearray = await photo_file.download_as_bytearray()
 
+        # Google API uchun rasm qismini tayyorlash
         image_part = types.Part.from_bytes(data=bytes(image_bytearray), mime_type="image/jpeg")
         
         # Toza va tartibli f-string ko'rinishidagi prompt
@@ -241,18 +244,29 @@ Sen oʻzing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar sh
         
         response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
         
-        await status_msg.edit_text(response.text if response.text else "Matn topilmadi.")
+        # Gemini javobini tozalash va tekshirish
+        result_text = response.text.strip() if response.text else ""
+        
+        if result_text:
+            # Telegram 'Message is not modified' xatosi bermasligi uchun eski xabarni o'chirib, yangisini yuboramiz
+            await status_msg.delete()
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=result_text[:3500])
+        else:
+            await status_msg.edit_text("🤷‍♂️ Kechirasiz, rasmdan o'qish uchun hech qanday matn topilmadi.")
         
     except Exception as e:
         logger.error(f"Rasm xatosi: {e}")
         error_str = str(e)
         
-        # Google serverlaridagi yuklama yoki uzilishni tekshirish
+        # Google serverlaridagi yuklama yoki uzilishni tekshirish (503 xatoligi uchun)
         if "503" in error_str or "high demand" in error_str.lower() or "unavailable" in error_str.lower():
             await status_msg.edit_text("⚠️ Google Gemini serverlarida ayni damda yuklama juda yuqori. Iltimos, 1-2 daqiqadan so'ng qayta urinib ko'ring!")
         else:
-            await status_msg.edit_text("❌ Rasm tahlilida texnik xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
-
+            # Agar eski xabar o'chib ketgan bo'lsa, edit_text xatolik bermasligi uchun tekshiruv bilan yozamiz
+            try:
+                await status_msg.edit_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
+            except Exception:
+                await update.message.reply_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
 # ==============================
 # 5️⃣ SOZ MATN TARJIMASI
 # ==============================
