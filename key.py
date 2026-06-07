@@ -124,7 +124,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             voice_text = ""
             screen_text = ""
 
-            # A) Whisper orqali Ovozni matnga o'girish
+            # A) Whisper orqali Ovozni matnga o'girish (Siz istagan "Videodagi matn")
             if query.data in ["vid_only_voice", "vid_both"]:
                 await status_message.edit_text("🎵 Ovoz ajratib olinmoqda va matnga o'girilmoqda...")
                 clip.audio.write_audiofile(audio_path, logger=None)
@@ -132,16 +132,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 raw_voice_text = result.get("text", "").strip()
                 
                 if raw_voice_text:
+                    # Whisper topgan matnni Gemini orqali qora harflarsiz, ma'no jihatdan toza tarjima qildiramiz
                     voice_prompt = f"""Ushbu xorijiy tildagi audio matnni o'zbek tiliga chiroyli va professional darajada tarjima qilib ber.
-Sizdan javobni aniq mana bu tartibda qaytarishingizni talab qilaman:
-
-Original matn:
-[Bu yerga audio matnning xorijiy tildagi o'z holatini yozing]
-
-Tarjimasi:
-[Bu yerga o'zbekcha ma'noviy tarjimasini yozing]
-
-⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki boshqa sarlavhalar ishlatma! Faqat yuqoridagi andozada javob qaytar.
+So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat tarjimaning o'zini qaytar.
 
 Audio matn: {raw_voice_text}"""
                     response_voice = client.models.generate_content(model='gemini-2.5-flash', contents=voice_prompt)
@@ -158,35 +152,29 @@ Audio matn: {raw_voice_text}"""
 
                 image_part = types.Part.from_bytes(data=bytes(frame_bytes), mime_type="image/jpeg")
                 prompt_vision = f"""Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini aniqlab, o'zbek tiliga chiroyli tarjima qilib ber.
-Sizdan javobni aniq mana bu tartibda qaytarishingizni talab qilaman:
-
-Original matn:
-[Bu yerga rasmdagi matnning xorijiy tildagi o'z holatini yozing]
-
-Tarjimasi:
-[Bu yerga o'zbekcha ma'noviy tarjimasini yozing]
-
-⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki boshqa sarlavhalar ishlatma! Faqat yuqoridagi andozada javob qaytar."""
+So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat toza tarjimani yoz."""
                 
                 response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
                 screen_text = response_vision.text.strip() if response_vision.text else ""
 
             clip.close()
 
-            # 📝 Natijani toza shaklda yig'ish (Sarlavha faqat "Videodagi text:")
-            final_response = "Videodagi text:\n\n"
+            # 📝 Natijani toza shaklda yig'ish (Qora harflarsiz, toza matn)
+            final_response = ""
             
             if query.data == "vid_only_text":
-                final_response += screen_text if screen_text else "Matn topilmadi."
+                final_response = f"Videodagi text:\n{screen_text if screen_text else 'Matn topilmadi.'}"
             elif query.data == "vid_only_voice":
-                final_response += voice_text if voice_text else "Ovozli matn aniqlanmadi."
+                final_response = f"Videodagi text:\n{voice_text if voice_text else 'Ovozli matn aniqlanmadi.'}"
             elif query.data == "vid_both":
-                combined_text = ""
+                final_response = ""
                 if voice_text:
-                    combined_text += f"[OVOZDAN OLINGAN]\n{voice_text}\n\n"
+                    final_response += f"Videodagi text (Ovozdan):\n{voice_text}\n\n"
                 if screen_text:
-                    combined_text += f"[EKRANDAN OLINGAN]\n{screen_text}"
-                final_response += combined_text if combined_text else "Videodan hech qanday matn aniqlanmadi."
+                    final_response += f"Videodagi text (Ekrandan):\n{screen_text}"
+                if not final_response:
+                    final_response = "Videodan hech qanday matn aniqlanmadi."
 
             await status_message.edit_text(final_response[:4000])
 
