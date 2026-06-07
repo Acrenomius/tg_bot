@@ -1,10 +1,7 @@
 import os
 import io
 import logging
-import asyncio
 import warnings
-import http.server
-import threading
 from dotenv import load_dotenv
 
 # CPU serverlarda ogohlantirishlarni o'chirish (Railway uchun)
@@ -270,32 +267,10 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
     )
 
 # ==============================
-# 🌐 6️⃣ SOXTA PORT PANEL (RAILWAY UYQUGA KETMASLIGI UCHUN)
-# ==============================
-def run_dummy_server():
-    port = int(os.environ.get("PORT", 8080))
-    server_address = ("", port)
-    
-    class DummyHandler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"🤖 Telegram Bot Ping Server is Active!")
-
-    httpd = http.server.HTTPServer(server_address, DummyHandler)
-    print(f"🌐 Soxta port matori ochildi: Port {port}")
-    httpd.serve_forever()
-
-# ==============================
-# ⚡ 7️⃣ ASOSIY ISHGA TUSHIRISH (MAIN)
+# ⚡ 6️⃣ ASOSIY ISHGA TUSHIRISH (MAIN)
 # ==============================
 def main():
-    # 1. Soxta port matorini alohida ipda (Thread) fonda yoqamiz
-    dummy_thread = threading.Thread(target=run_dummy_server, daemon=True)
-    dummy_thread.start()
-
-    # 2. Telegram botni qurish va Pollingni boshlash
+    # Faqat Telegram Botni Polling (Xabarlarni eshitish) rejimida yoqish
     bot_app = ApplicationBuilder().token(TOKEN).build()
 
     bot_app.add_handler(CommandHandler("start", start_handler))
@@ -305,7 +280,7 @@ def main():
     bot_app.add_handler(MessageHandler(filters.VIDEO, handle_video_translation))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
 
-    print("🤖 Telegram Bot Polling rejimida muvaffaqiyatli uchdi!")
+    print("🤖 Telegram Bot SOF Polling rejimida muvaffaqiyatli uchdi!")
     bot_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
