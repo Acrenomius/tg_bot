@@ -224,6 +224,9 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================
 # 5️⃣ SOZ MATN TARJIMASI
 # ==============================
+# ==============================
+# SOZ MATN TARJIMASI (KUCHAYTIRILGAN)
+# ==============================
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
     status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
@@ -235,8 +238,11 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response.text[:3500])
     except Exception as e:
         logger.error(f"Tarjima xatosi: {e}")
-        await status_msg.edit_text("Tarjimada texnik xatolik ketdi.")
-
+        error_str = str(e)
+        if "503" in error_str or "high demand" in error_str.lower():
+            await status_msg.edit_text("⚠️ Google Gemini serverlarida ayni damda yuklama juda yuqori. Iltimos, 1-2 daqiqadan so'ng qayta urinib ko'ring!")
+        else:
+            await status_msg.edit_text("❌ Tarjimada texnik xatolik ketdi. Birozdan so'ng qayta urinib ko'ring.")
 # ==============================
 # 🎬 VIDEO KELGANDA TUGMALARNI CHIQARISH
 # ==============================
