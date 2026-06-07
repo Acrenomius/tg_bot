@@ -53,7 +53,7 @@ logging.basicConfig(
 )
 
 print("⏳ Whisper modeli yuklanmoqda...")
-whisper_model = whisper.load_model("tinys")
+whisper_model = whisper.load_model("tiny")
 print("✅ Whisper modeli tayyor!")
 
 
