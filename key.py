@@ -195,12 +195,19 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clean_text = full_text.strip()
         if len(clean_text) > 10:
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
-            prompt = f"Foydalanuvchi xuddi kitobni oʻqigandek boʻlsin. "
-                "Kitob ichidagi oʻqilganda eng yorqin boʻlgan matnlarni tushuntirganingdan keyin yozib qoʻy. "
-                "Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
-                "Foydalanuvchi uzun matnlarni yomon koʻradi. Qora harf va soʻzlardan foydalanma. Context kerak emas. Xulosa ham. "
-                "HECH QANDAY sarlavha, kirish soʻzi (masalan: ‘Hujjat mazmuni’, ‘Mana tahlil’) yozma! "
-                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.\n\n" {clean_text[:12000]}"
+            
+            # Triple quotes yordamida qat'iy va xatosiz f-string prompt yaratamiz
+            prompt = f"""Foydalanuvchi xuddi kitobni oʻqigandek boʻlsin. 
+Kitob ichini analiz qilganingda eng yorqin boʻlgan matnlarni tushuntirganingdan keyin yozib qoʻy. 
+Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas (umuman ** belgisini ishlatma). 
+Foydalanuvchi uzun matnlarni yomon koʻradi. Qora harf va soʻzlardan foydalanma. Context kerak emas. Xulosa ham. 
+
+⚠️ TAQIQLANADI: HECH QANDAY sarlavha, kirish soʻzi (masalan: ‘Hujjat mazmuni’, ‘Mana tahlil’) yozma! To'g'ridan-to'g'ri tahlildan boshla.
+
+Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.
+
+Hujjat matni:
+{clean_text[:12000]}"""
             
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             final_output = response.text.strip() if response.text else "Tahlil natijasi bo'sh."
