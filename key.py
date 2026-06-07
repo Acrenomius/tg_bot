@@ -7,12 +7,13 @@ from dotenv import load_dotenv
 # FastAPI kutubxonalari (Ilova API yo'lagi uchun)
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 # Yangi rasmiy Google SDK (Gemini uchun)
 from google import genai
 from google.genai import types
 
-# Eski qatorni o'rniga mana buni qo'ying:
+# Video va Ovoz kutubxonalari
 from moviepy import VideoFileClip
 import whisper
 
@@ -46,10 +47,20 @@ if not GEMINI_KEY:
 # Gemini klienti
 client = genai.Client(api_key=GEMINI_KEY)
 
-# FastAPI veb-server obyekti (Alohida ilova ulanishi uchun)
+# Whisper modelini yuklab olamiz (Faqat fonda yuklanadi)
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+print("⏳ Whisper modeli yuklanmoqda...")
+whisper_model = whisper.load_model("base")
+print("✅ Whisper modeli tayyor!")
+
+# FastAPI veb-server obyekti
 app = FastAPI(title="Universal AI Translator Platform API")
 
-# Har qanday qurilma (Ilova) ulanishi uchun CORS ruxsatnomalari
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -58,12 +69,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
+# Kiber-neon interfeys uchun tayyor HTML shablon matni
+html_shablon = """
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Multimodal Standalone App</title>
+    <style>
+        body { background-color: #0d1117; color: #39FF14; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 50px; }
+        .container { border: 2px solid #39FF14; display: inline-block; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px #39FF14; }
+        h1 { margin-bottom: 10px; }
+        p { color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🟢 Universal AI Center</h1>
+        <p>Tizim va Telegram Bot fonda muvaffaqiyatli ishlamoqda...</p>
+    </div>
+</body>
+</html>
+"""
 
 # ==============================
 # 2️⃣ START KOMANDASI VA TUGMALAR HANDLERI
@@ -76,65 +103,43 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🤖 Men — <b>Gemini 2.5</b> neyron tarmog'i negizida ishlovchi universal "
         f"<b>Ko'p tilli Tarjimon Asistentman</b>. Menga yuborilgan har qanday ma'lumotni zudlik bilan o'zbek tiliga o'girib beraman.\n\n"
         f"<b>📌 Tizim imkoniyatlari:</b>\n"
-        f"📝 <b>Matnli tarjima:</b> Istalgan tildagi uzun matn yoki gaplarni yuboring, men ularni akademik va badiiy jihatdan o'zbekcha qilaman.\n"
-        f"📄 <b>PDF Hujjatlar tarjimasi:</b> Xorijiy tildagi kitob yoki maqolalarni o'qib, o'zbek tilida tahliliy sharh tayyorlayman.\n"
-        f"🖼 <b>Tasvirlardagi matn (Vision):</b> Yuborgan rasmingiz ichidagi chet tillaridagi yozuvlarni aniqlab, o'zbekchaga o'giraman.\n\n"
-        f"<i>💡 To'g'ridan-to'g'ri menga biron bir matn, PDF fayl yoki rasm yuborib sinab ko'ring!</i>"
+        f"📝 <b>Matnli tarjima:</b> Istalgan tildagi uzun matnlarni yuboring.\n"
+        f"📄 <b>PDF Hujjatlar:</b> PDF elektron kitob yoki maqolalarni o'zbekcha tahlil qilaman.\n"
+        f"🖼 <b>Tasvirlar (Vision):</b> Rasmdagi yozuvlarni o'zbekchaga o'giraman.\n"
+        f"🎬 <b>Video tarjima:</b> 2 minutgacha bo'lgan videolarni ovozini eshitib tarjima qilaman!\n\n"
+        f"<i>💡 To'g'ridan-to'g'ri biron bir matn, PDF, rasm yoki video yuborib sinab ko'ring!</i>"
     )
     
     keyboard = [
         [
-            InlineKeyboardButton("📝 Matn tarjima qilish", callback_data="help_translation"),
-            InlineKeyboardButton("📄 PDF tahlil qilish", callback_data="help_pdf")
+            InlineKeyboardButton("📝 Matn tarjimasi", callback_data="help_translation"),
+            InlineKeyboardButton("📄 PDF tahlili", callback_data="help_pdf")
         ],
         [
-            InlineKeyboardButton("🖼 Rasm tahlili (Vision)", callback_data="help_vision")
+            InlineKeyboardButton("🖼 Rasm (Vision)", callback_data="help_vision")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        text=welcome_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-
+    await update.message.reply_text(text=welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     if query.data == "help_translation":
-        await query.message.reply_text(
-            "📝 <b>Matn tarjima qilish bo'limi:</b>\n\n"
-            "Menga istalgan tildagi (ingliz, rus, nemis va h.k.) matnni to'g'ridan-to'g'ri yuboring. "
-            "Tizim xabaringizni qabul qilishi bilan avtomatik ravishda kontekstual sinxron tarjimani boshlaydi.",
-            parse_mode="HTML"
-        )
+        await query.message.reply_text("📝 Matnni to'g'ridan-to'g'ri yuboring, avtomatik o'zbekchaga o'giriladi.")
     elif query.data == "help_pdf":
-        await query.message.reply_text(
-            "📄 <b>PDF tahlil qilish bo'limi:</b>\n\n"
-            "Menga chet tilidagi elektron kitob yoki PDF hujjatni fayl ko'rinishida yuboring. "
-            "Men uning matnini to'liq tahlil qilib, o'zbek tilida sizga mazmunini tushuntirib beraman.",
-            parse_mode="HTML"
-        )
+        await query.message.reply_text("📄 Chet tilidagi PDF kitobni fayl shaklida yuboring.")
     elif query.data == "help_vision":
-        await query.message.reply_text(
-            "🖼 <b>Computer Vision (Rasm tarjimasi) bo'limi:</b>\n\n"
-            "Menga istalgan rasmni yuboring. Men undagi xorijiy yozuvlarni "
-            "o'zbek tiliga kontekstual ma'nosini buzmagan holda o'girib beraman.",
-            parse_mode="HTML"
-        )
-
+        await query.message.reply_text("🖼 Yozuvi bor istalgan rasmni yuboring.")
 
 # ==============================
 # 3️⃣ PDF TAHLILI FUNKSIYASI
 # ==============================
 async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.document:
-        return
-    if not update.message.document.file_name.lower().endswith('.pdf'):
-        return
+    if not update.message or not update.message.document: return
+    if not update.message.document.file_name.lower().endswith('.pdf'): return
 
     status_msg = await update.message.reply_text("PDF qabul qilindi. Matn o'qilmoqda... 📄")
     file = await update.message.document.get_file()
@@ -142,77 +147,24 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         pdf_bytes = await file.download_as_bytearray()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        
-        full_text = ""
-        for page in doc:
-            full_text += page.get_text()
+        full_text = "".join([page.get_text() for page in doc])
         doc.close()
 
         clean_text = full_text.strip()
-        
         if len(clean_text) > 10:
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
+            prompt = f"Ushbu kitob/matn mazmunini o'zbek tilida chiroyli tushuntirib ber, oxirida kimlar uchun foydaliligini yoz:\n\nMatn: {clean_text[:12000]}"
             
-            prompt = (
-                "Foydalanuvchi xuddi kitobni o'qigandek bo'lsin. "
-                "Kitob ichidagi o'qilganda eng yorqin bo'lgan matnlarni tushuntirganingdan keyin yozib qo'y. "
-                "Ortiqcha belgilarga e'tibor qaratma va o'zing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
-                "Foydalanuvchi uzun matnlarni yomon ko'radi. Qora harf va so'zlardan foydalanma. Context kerak emas. Xulosa ham. "
-                "HECH QANDAY sarlavha, kirish so'zi (masalan: 'Hujjat mazmuni', 'Mana tahlil') yozma! "
-                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.\n\n"
-                f"Matn: {clean_text[:12000]}"  # Resurs limitidan oshmaslik uchun xavfsiz chegara
-            )
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            final_output = response.text.strip() if response.text else "Tahlil natijasi bo'sh."
             
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
-            
-            final_output = response.text.strip() if response.text else ""
-            
-            filter_words = ["Hujjatning qisqacha mazmuni:", "Hujjat mazmuni:", "Tahlil:", "**Hujjatning qisqacha mazmuni:**"]
-            for word in filter_words:
-                if final_output.startswith(word):
-                    final_output = final_output.replace(word, "", 1).strip()
-
-            if final_output:
-                await status_msg.delete()
-                
-                text_to_send = final_output
-                max_length = 3500
-                chat_id = update.effective_chat.id
-                
-                while len(text_to_send) > 0:
-                    if len(text_to_send) <= max_length:
-                        await context.bot.send_message(chat_id=chat_id, text=text_to_send)
-                        break
-                    
-                    split_index = text_to_send.rfind('\n', 0, max_length)
-                    if split_index == -1 or split_index == 0:
-                        split_index = text_to_send.rfind('. ', 0, max_length)
-                    if split_index == -1 or split_index == 0:
-                        split_index = text_to_send.rfind(' ', 0, max_length)
-                    if split_index == -1 or split_index == 0:
-                        split_index = max_length
-                        
-                    chunk = text_to_send[:split_index].strip()
-                    if chunk:
-                        await context.bot.send_message(chat_id=chat_id, text=chunk)
-                    
-                    text_to_send = text_to_send[split_index:].strip()
-            else:
-                await status_msg.edit_text("Tahlil natijasini olishda muammo bo'ldi.")
-            
+            await status_msg.delete()
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=final_output[:3500])
         else:
             await status_msg.edit_text("PDF ichida o'qish uchun matn topilmadi.")
-
     except Exception as e:
         logger.error(f"PDF xatosi: {e}")
-        try:
-            await status_msg.edit_text("PDF tahlilida texnik xatolik yuz berdi.")
-        except Exception:
-            await update.message.reply_text("PDF tahlilida xatolik yuz berdi.")
-
+        await status_msg.edit_text("PDF tahlilida xatolik yuz berdi.")
 
 # ==============================
 # 4️⃣ MULTIMODAL (RASM) FUNKSIYASI
@@ -223,197 +175,100 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         image_bytearray = await photo_file.download_as_bytearray()
 
-        image_part = types.Part.from_bytes(
-            data=bytes(image_bytearray),
-            mime_type="image/jpeg"
-        )
+        image_part = types.Part.from_bytes(data=bytes(image_bytearray), mime_type="image/jpeg")
+        prompt = "Rasmdagi matnni o'zbek tiliga tarjima qil. Ortiqcha izoh yozma."
         
-        prompt = (
-            "Rasmdagi matnni o'zbek tiliga tarjima qil. "
-            "So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz. "
-            "Qora harflarni ishlatma. Agar rasmda ajratilgan biror belgi bo'lsa o'shani qo'yishing mumkin. "
-            "Sen o'zing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar shartmas."
-        )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt, image_part]
-        )
-        await status_msg.edit_text(response.text if response.text else "Rasmda tarjima qilinadigan matn topilmadi.")
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
+        await status_msg.edit_text(response.text if response.text else "Matn topilmadi.")
     except Exception as e:
         logger.error(f"Rasm xatosi: {e}")
         await update.message.reply_text("Rasm tahlilida xatolik yuz berdi.")
-
 
 # ==============================
 # 5️⃣ SOZ MATN TARJIMASI
 # ==============================
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    user_text = update.message.text
+    if not update.message or not update.message.text: return
     status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
 
     try:
-        prompt = (
-            "Siz professional va yuqori malakali sinxron tarjimonsiz. Vazifangiz berilgan matnni "
-            "qaysi tilda bo'lishidan qat'i nazar (ingliz, rus va h.k.) o'zbek tiliga mukammal tarjima qilish.\n"
-            "DIQQAT: O'zingizdan hech qanday izoh, 'Mana tarjima' kabi kirish so'zlari yoki xulosa qo'shmang! "
-            "Faqat tarjimaning o'zini qaytaring.\n\n"
-            f"Tarjima qilinishi kerak bo'lgan matn:\n{user_text}"
-        )
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        
-        final_translation = response.text.strip() if response.text else ""
-
-        if final_translation:
-            await status_msg.delete()
-            
-            text_to_send = final_translation
-            max_length = 3500
-            chat_id = update.effective_chat.id
-            
-            while len(text_to_send) > 0:
-                if len(text_to_send) <= max_length:
-                    await context.bot.send_message(chat_id=chat_id, text=text_to_send)
-                    break
-                
-                split_index = text_to_send.rfind('\n', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = text_to_send.rfind('. ', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = text_to_send.rfind(' ', 0, max_length)
-                if split_index == -1 or split_index == 0:
-                    split_index = max_length
-                    
-                chunk = text_to_send[:split_index].strip()
-                if chunk:
-                    await context.bot.send_message(chat_id=chat_id, text=chunk)
-                
-                text_to_send = text_to_send[split_index:].strip()
-        else:
-            await status_msg.edit_text("Matnni tarjima qilishda muammo yuz berdi.")
-
+        prompt = f"Berilgan matnni o'zbek tiliga professional tarjima qiling. Ortiqcha so'z qo'shmang:\n\n{update.message.text}"
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        await status_msg.delete()
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response.text[:3500])
     except Exception as e:
         logger.error(f"Tarjima xatosi: {e}")
-        try:
-            await status_msg.edit_text("Xabarni tarjima qilishda tizimli xatolik yuz berdi.")
-        except Exception:
-            await update.message.reply_text("Tizimli xatolik yuz berdi.")
-
+        await status_msg.edit_text("Tarjimada texnik xatolik ketdi.")
 
 # ==============================
-# 🌐 6️⃣ FASTAPI YO'LAKLARI (ALOHIDA MOBIL ILOVA UCHUN API)
+# 🎬 VIDEO TARJIMA FUNKSIYASI (whisper + gemini)
 # ==============================
-
-@app.get("/")
-async def root_status():
-    return {"status": "running", "platform": "Universal AI Center"}
-
-@app.post("/api/v1/app-process")
-async def independent_app_handler(file: UploadFile = File(...)):
-    """
-    Alohida kiber-neon mobil ilovadan (App) keladigan rasm yoki fayllarni 
-    qabul qilib, Gemini API'ga yuboruvchi mustaqil ochiq yo'lak (API Endpoint).
-    """
-    try:
-        file_bytes = await file.read()
-        
-        # Fayl turini aniqlash (Mime Type)
-        mime_type = file.content_type
-        
-        image_part = types.Part.from_bytes(
-            data=bytes(file_bytes),
-            mime_type=mime_type
-        )
-        
-        prompt = (
-            "Siz alohida mobil ilovaning intellektual yadrosisiz. "
-            "Ushbu kelgan texnik hujjat yoki tasvirdagi matnlarni o'zbek tiliga terminologik aniqlikda o'gir va mukammal tahlil qil."
-        )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt, image_part]
-        )
-        
-        return {
-            "status": "success",
-            "data": response.text if response.text else "Ma'lumot topilmadi."
-        }
-    except Exception as e:
-        logger.error(f"App API xatosi: {e}")
-        return {"status": "error", "message": str(e)}
-
-
 async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video
-    
-    # 1. Video davomiyligini tekshirish (120 soniya = 2 minut)
     if video.duration > 120:
         await update.message.reply_text("❌ Kechirasiz, video davomiyligi eng ko'pi bilan 2 minut bo'lishi kerak!")
         return
 
-    status_message = await update.message.reply_text("⏳ Video qabul qilindi. Qayta ishlanmoqda, iltimos kuting...")
-
-    # 2. Videoni yuklab olish
-    video_file = await context.bot.get_file(video.file_id)
+    status_message = await update.message.reply_text("⏳ Video yuklab olinmoqda...")
     video_path = "user_video.mp4"
     audio_path = "extracted_audio.mp3"
-    await video_file.download_to_drive(video_path)
 
     try:
-        # 3. Videodan audioni ajratib olish
+        video_file = await context.bot.get_file(video.file_id)
+        await video_file.download_to_drive(video_path)
+
         await status_message.edit_text("🎵 Videodan audio ajratib olinmoqda...")
         clip = VideoFileClip(video_path)
         clip.audio.write_audiofile(audio_path, logger=None)
         clip.close()
 
-        # 4. Speech-to-Text: Ovozni matnga aylantirish va tarjima qilish
-        await status_message.edit_text("🗣️ Ovoz matnga o'girilmoqda va tarjima qilinmoqda...")
-        
-        # Whisper o'zi avtomatik tildan qat'iy nazar matnni inglizcha yoki o'zbekchaga o'gira oladi
-        # 'task="translate"' ingliz tiliga tarjima qilish uchun, biz esa o'zbekcha matnni Gemini orqali olamiz
-        result = model.transcribe(audio_path)
-        original_text = result["text"]
+        await status_message.edit_text("🗣️ Ovoz matnga o'girilmoqda (Whisper AI)...")
+        result = whisper_model.transcribe(audio_path)
+        original_text = result.get("text", "").strip()
 
-        # 5. Gemini AI orqali matnni chiroyli O'zbek tiliga o'girish
-        await status_message.edit_text("🤖 Sun'iy intellekt matnni o'zbekchaga o'girmoqda...")
-        
-        prompt = f"Quyidagi matn videodan ajratib olindi. Uni o'zbek tiliga juda chiroyli va tushunarli qilib tarjima qilib ber:\n\n{original_text}"
-        
-        # Bu yerda o'zingizning amaldagi Gemini model chaqiruvingizni ishlating
-        # Masalan: response = model_gemini.generate_content(prompt)
-        # sarlavha = response.text
-        
-        # Hozircha namunaviy javob:
-        uzbek_translation = f"Asl matn: {original_text}\n\n🇺🇿 O'zbekcha tarjimasi:\n[Bu yerga Gemini qaytargan tarjima joylashadi]"
+        if not original_text:
+            await status_message.edit_text("❌ Videoda aniq gapirilgan ovoz topilmadi.")
+            return
 
-        # Natijani foydalanuvchiga yuborish
-        await status_message.edit_text(uzbek_translation)
+        await status_message.edit_text("🤖 Gemini AI matnni o'zbekchaga o'girmoqda...")
+        prompt = f"Quyidagi chet tilidagi matn videodan ajratib olindi. Uni o'zbek tiliga ma'noli qilib o'girib ber:\n\n{original_text}"
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        
+        uzbek_translation = f"📝 **Videodan olingan matn:**\n_{original_text}_\n\n🇺🇿 **O'zbekcha tarjimasi:**\n{response.text}"
+        await status_message.edit_text(uzbek_translation[:4000])
 
     except Exception as e:
-        await status_message.edit_text(f"❌ Xatolik yuz berdi: {str(e)}")
-    
+        logger.error(f"Video xatosi: {e}")
+        await status_message.edit_text(f"❌ Video qayta ishlashda xato: {str(e)}")
     finally:
-        # Vaqtinchalik fayllarni o'chirib tashlaymiz
         if os.path.exists(video_path): os.remove(video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
 
+# ==============================
+# 🌐 6️⃣ FASTAPI YO'LAKLARI
+# ==============================
+@app.get("/", response_class=HTMLResponse)
+async def root_status():
+    return html_shablon
+
+@app.post("/api/v1/app-process")
+async def independent_app_handler(file: UploadFile = File(...)):
+    try:
+        file_bytes = await file.read()
+        image_part = types.Part.from_bytes(data=bytes(file_bytes), mime_type=file.content_type)
+        prompt = "Ushbu tasvirdagi matnlarni o'zbek tiliga terminologik aniqlikda o'gir va mukammal tahlil qil."
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
+        return {"status": "success", "data": response.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # ==============================
-# ⚡ 7️⃣ LIFESPAN & BACKGROUND EVENT (YANGI STANDART)
+# ⚡ 7️⃣ LIFESPAN & BACKGROUND EVENT
 # ==============================
 from contextlib import asynccontextmanager
 
 async def run_bot_in_background():
-    """Botni mutlaqo alohida fonda, FastAPIga xalaqit bermagan holda yondirish"""
-    await asyncio.sleep(2)  # FastAPI o'z portini ochib olishi uchun 2 soniya kutish
+    await asyncio.sleep(3)  # Port to'liq ochilishi uchun kutish
     
     bot_app = ApplicationBuilder().token(TOKEN).build()
 
@@ -421,8 +276,8 @@ async def run_bot_in_background():
     bot_app.add_handler(CallbackQueryHandler(button_callback_handler))
     bot_app.add_handler(MessageHandler(filters.PHOTO, analyze_image))
     bot_app.add_handler(MessageHandler(filters.Document.PDF, analyze_pdf))
+    bot_app.add_handler(MessageHandler(filters.VIDEO, handle_video_translation))  # To'g'rilangan joy 🟢
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
-    app.add_handler(MessageHandler(filters.VIDEO, handle_video_translation))
 
     try:
         await bot_app.initialize()
@@ -434,12 +289,8 @@ async def run_bot_in_background():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Dastur yoqilayotganda (Startup) bajariladigan qism:
     asyncio.ensure_future(run_bot_in_background())
-    print("🌐 FastAPI o'z portini tekshirishga tayyorladi.")
     yield
-    # Dastur o'chayotganda (Shutdown) bajariladigan qism (agar kerak bo'lsa):
     print("🌐 Server to'xtatildi.")
 
-# FastAPI obyektiga lifespan mexanizmini ulaymiz
 app.router.lifespan_context = lifespan
