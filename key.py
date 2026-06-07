@@ -223,24 +223,26 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
         clip = VideoFileClip(video_path)
 
         # ------------------------------------
-        # 🎙️ 1-QISMM: OVOZNI MATNGA O'GIRISH (WHISPER)
+        # 🎙️ 1-QISM: OVOZNI MATNGA O'GIRISH (WHISPER)
         # ------------------------------------
         await status_message.edit_text("🎵 Videodan audio ajratib olinmoqda...")
         clip.audio.write_audiofile(audio_path, logger=None)
 
         await status_message.edit_text("🗣️ Ovoz matnga o'girilmoqda (Whisper AI)...")
-        result = whisper_model.transcribe(audio_path)
+        
+        # 🟢 CPU server uchun fp16=False rejimi qo'shildi. Endi soxta xato bermaydi!
+        result = whisper_model.transcribe(audio_path, fp16=False)
         voice_text = result.get("text", "").strip()
 
         # ------------------------------------
-        # 🖼️ 2-QISMM: EKRANDAGI MATNNI ANIQLASH (GEMINI VISION)
+        # 🖼️ 2-QISM: EKRANDAGI MATNNI ANIQLASH (GEMINI VISION)
         # ------------------------------------
         await status_message.edit_text("🔍 Video ekranidagi yozuvlar (subtitrlar) tahlil qilinmoqda...")
         
-        # Videoning aynan o'rtasidan (yoki 2-soniyasidan) bitta kadr (skrinshot) olamiz
+        # Videoning aynan o'rtasidan bitta kadr olamiz
         frame_time = min(2.0, clip.duration / 2)
         clip.save_frame(frame_path, t=frame_time)
-        clip.close() # Klipni yopamiz
+        clip.close()  # Klipni yopamiz
 
         # Kadrni bayt ko'rinishida o'qiymiz
         with open(frame_path, "rb") as f:
@@ -258,7 +260,7 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
         screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
 
         # ------------------------------------
-        # 📝 3-QISMM: NATIJALARNI BIRLASHTIRISH
+        # 📝 3-QISM: NATIJALARNI BIRLASHTIRISH
         # ------------------------------------
         await status_message.edit_text("🤖 Yakuniy natija tayyorlanmoqda...")
 
@@ -277,8 +279,9 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         logger.error(f"Video multimodal xatosi: {e}")
         await status_message.edit_text(f"❌ Video qayta ishlashda xato yuz berdi: {str(e)}")
+        
     finally:
-        # Vaqtinchalik fayllarni tozalash
+        # Vaqtinchalik fayllarni har qanday holatda tozalash (Indentatsiyalar to'g'rilandi 🟢)
         if os.path.exists(video_path): os.remove(video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
         if os.path.exists(frame_path): os.remove(frame_path)
