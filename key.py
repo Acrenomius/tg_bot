@@ -124,16 +124,26 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             voice_text = ""
             screen_text = ""
 
-            # A) Whisper orqali Ovozni matnga o'girish
+            # A) Whisper orqali Ovozni matnga o'girish (Siz istagan "Videodagi matn")
             if query.data in ["vid_only_voice", "vid_both"]:
                 await status_message.edit_text("🎵 Ovoz ajratib olinmoqda va matnga o'girilmoqda...")
                 clip.audio.write_audiofile(audio_path, logger=None)
                 result = whisper_model.transcribe(audio_path, fp16=False)
-                voice_text = result.get("text", "").strip()
+                raw_voice_text = result.get("text", "").strip()
+                
+                if raw_voice_text:
+                    # Whisper topgan matnni Gemini orqali qora harflarsiz, ma'no jihatdan toza tarjima qildiramiz
+                    voice_prompt = f"""Ushbu xorijiy tildagi audio matnni o'zbek tiliga chiroyli va professional darajada tarjima qilib ber.
+So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat tarjimaning o'zini qaytar.
+
+Audio matn: {raw_voice_text}"""
+                    response_voice = client.models.generate_content(model='gemini-2.5-flash', contents=voice_prompt)
+                    voice_text = response_voice.text.strip() if response_voice.text else ""
 
             # B) Gemini Vision orqali ekrandagi matnni aniqlash
             if query.data in ["vid_only_text", "vid_both"]:
-                await status_message.edit_text("🔍 Ekrandagi yozuvlar (subtitrlar) tahlil qilinmoqda...")
+                await status_message.edit_text("🔍 Ekrandagi yozuvlar (subtirler) tahlil qilinmoqda...")
                 frame_time = min(2.0, video_duration / 2)
                 clip.save_frame(frame_path, t=frame_time)
                 
@@ -141,30 +151,30 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     frame_bytes = f.read()
 
                 image_part = types.Part.from_bytes(data=bytes(frame_bytes), mime_type="image/jpeg")
-                prompt_vision = (
-                    "Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini "
-                    "aniqlab, o'zbek tiliga chiroyli tarjima qilib ber. Ortiqcha izoh yozma."
-                    "Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma."
-                     "HECH QANDAY sarlavha, kirish soʻzi yozma! "
-                    "foydalanuvchiga faqat matnning tarjimasini yetkaz"
-                    "lekin uni o'zing xohlaganingcha emas, tarjima qilib undan ma'nosini olib keyin taqdim et"
-                    
-                )
+                prompt_vision = f"""Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini aniqlab, o'zbek tiliga chiroyli tarjima qilib ber.
+So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat toza tarjimani yoz."""
+                
                 response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
-                screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
+                screen_text = response_vision.text.strip() if response_vision.text else ""
 
             clip.close()
 
-            # 📝 Natijani foydalanuvchiga yig'ib berish
-            final_response = "🎬 **Video tahlili natijasi:**\n\n"
+            # 📝 Natijani toza shaklda yig'ish (Qora harflarsiz, toza matn)
+            final_response = ""
             
             if query.data == "vid_only_text":
-                final_response += f"📺 **Ekrandagi yozuvlar/Subtitr tarjimasi:**\n{screen_text}"
+                final_response = f"Videodagi text:\n{screen_text if screen_text else 'Matn topilmadi.'}"
             elif query.data == "vid_only_voice":
-                final_response += f"🗣️ **Gapirilgan ovoz tarjimasi:**\n_{voice_text if voice_text else 'Ovoz topilmadi.'}_"
+                final_response = f"Videodagi text:\n{voice_text if voice_text else 'Ovozli matn aniqlanmadi.'}"
             elif query.data == "vid_both":
-                final_response += f"🗣️ **Gapirilgan ovoz tarjimasi:**\n_{voice_text if voice_text else 'Ovoz topilmadi.'}_\n\n"
-                final_response += f"📺 **Ekrandagi yozuvlar/Subtitr tarjimasi:**\n{screen_text}"
+                final_response = ""
+                if voice_text:
+                    final_response += f"Videodagi text (Ovozdan):\n{voice_text}\n\n"
+                if screen_text:
+                    final_response += f"Videodagi text (Ekrandan):\n{screen_text}"
+                if not final_response:
+                    final_response = "Videodan hech qanday matn aniqlanmadi."
 
             await status_message.edit_text(final_response[:4000])
 
@@ -196,13 +206,13 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(clean_text) > 10:
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
             
-            # Triple quotes yordamida qat'iy va xatosiz f-string prompt yaratamiz
             prompt = f"""Foydalanuvchi xuddi kitobni oʻqigandek boʻlsin. 
 Kitob ichini analiz qilganingda eng yorqin boʻlgan matnlarni tushuntirganingdan keyin yozib qoʻy. 
-Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas (umuman ** belgisini ishlatma). 
-Foydalanuvchi uzun matnlarni yomon koʻradi. Qora harf va soʻzlardan foydalanma. Context kerak emas. Xulosa ham. 
+Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma. 
 
-⚠️ TAQIQLANADI: HECH QANDAY sarlavha, kirish soʻzi (masalan: ‘Hujjat mazmuni’, ‘Mana tahlil’) yozma! To'g'ridan-to'g'ri tahlildan boshla.
+⚠️ MUTLAQ TAQIQ: Qora shriftdagi harflar kerak emas (umuman ** yoki __ belgilarini ishlatma). 
+Foydalanuvchi uzun matnlarni yomon koʻradi. Qora harf va soʻzlardan foydalanma. Context kerak emas. Xulosa ham. 
+HECH QANDAY sarlavha, kirish soʻzi (masalan: ‘Hujjat mazmuni’, ‘Mana tahlil’) yozma! 
 
 Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.
 
@@ -226,29 +236,22 @@ Hujjat matni:
 async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         status_msg = await update.message.reply_text("Rasm o'qilmoqda va matn aniqlanmoqda... 🔍")
-        
-        # Eng yuqori sifatli rasmni olish
         photo_file = await update.message.photo[-1].get_file()
         image_bytearray = await photo_file.download_as_bytearray()
 
-        # Google API uchun rasm qismini tayyorlash
         image_part = types.Part.from_bytes(data=bytes(image_bytearray), mime_type="image/jpeg")
         
-        # Toza va tartibli f-string ko'rinishidagi prompt
         prompt = f"""Rasmdagi matnni oʻzbek tiliga tarjima qil. 
 Soʻzlarni shunchaki tarjima qilma, umumiy ma’nosini yetkaz. 
-Qora harflarni ishlatma (umuman ** belgisidan foydalanma). 
+⚠️ TAQIQLANADI: Qora harflarni ishlatma (umuman ** yoki __ belgisidan foydalanma). 
 
 Agar rasmda ajratilgan biror belgi boʻlsa oʻshani qoʻyishing mumkin. 
 Sen oʻzing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar shartmas."""
         
         response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
-        
-        # Gemini javobini tozalash va tekshirish
         result_text = response.text.strip() if response.text else ""
         
         if result_text:
-            # Telegram 'Message is not modified' xatosi bermasligi uchun eski xabarni o'chirib, yangisini yuboramiz
             await status_msg.delete()
             await context.bot.send_message(chat_id=update.effective_chat.id, text=result_text[:3500])
         else:
@@ -257,26 +260,17 @@ Sen oʻzing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar sh
     except Exception as e:
         logger.error(f"Rasm xatosi: {e}")
         error_str = str(e)
-        
-        # Google serverlaridagi yuklama yoki uzilishni tekshirish (503 xatoligi uchun)
         if "503" in error_str or "high demand" in error_str.lower() or "unavailable" in error_str.lower():
             await status_msg.edit_text("⚠️ Google Gemini serverlarida ayni damda yuklama juda yuqori. Iltimos, 1-2 daqiqadan so'ng qayta urinib ko'ring!")
         else:
-            # Agar eski xabar o'chib ketgan bo'lsa, edit_text xatolik bermasligi uchun tekshiruv bilan yozamiz
             try:
-                await status_msg.edit_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
+                await status_msg.edit_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi.")
             except Exception:
-                await update.message.reply_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
+                await update.message.reply_text("❌ Rasm tahlilida kutilmagan xatolik yuz berdi.")
+
 # ==============================
 # 5️⃣ SOZ MATN TARJIMASI
 # ==============================
-# ==============================
-# SOZ MATN TARJIMASI (KUCHAYTIRILGAN)
-# ==============================
-async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
-    status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
-
 async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: 
         return
@@ -284,10 +278,11 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
 
     try:
-        # F-string ichida uchta qo'shtirnoq ishlatish matnni qatorlarga bo'lishni osonlashtiradi
         prompt = f"""Siz professional va yuqori malakali sinxron tarjimonsiz. 
 Vazifangiz berilgan matnni qaysi tilda boʻlishidan qat’i nazar oʻzbek tiliga mukammal va professional darajada tarjima qilish. Ortiqcha izoh yoki qo'shimcha gaplar qo'shmang.
-keyin foydalanuvchiga matn taqdim etayotganingizda, Soʻzlarni shunchaki tarjima qilmasdan umumiy ma’nosini yetkazing. 
+Soʻzlarni shunchaki tarjima qilmasdan umumiy ma’nosini yetkazing.
+
+⚠️ TAQIQLANADI: Umuman qora harflardan (**, __) foydalanmang!
 
 Matn:
 {update.message.text}"""
@@ -300,12 +295,11 @@ Matn:
     except Exception as e:
         logger.error(f"Tarjima xatosi: {e}")
         error_str = str(e)
-        
-        # Google API 503 va yuqori yuklama xatoliklarini tutib qolish
         if "503" in error_str or "high demand" in error_str.lower() or "unavailable" in error_str.lower():
             await status_msg.edit_text("⚠️ Google Gemini serverlarida ayni damda yuklama juda yuqori. Iltimos, 1-2 daqiqadan so'ng qayta urinib ko'ring!")
         else:
             await status_msg.edit_text("❌ Tarjimada texnik xatolik ketdi. Birozdan so'ng qayta urinib ko'ring.")
+
 # ==============================
 # 🎬 VIDEO KELGANDA TUGMALARNI CHIQARISH
 # ==============================
@@ -330,16 +324,14 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        text="🎬 **Video qabul qilindi!**\nUshbu videoning qaysi qismini tarjima qilishni xohlaysiz?",
-        reply_markup=reply_markup,
-        parse_mode="HTML"
+        text="🎬 Video qabul qilindi!\nUshbu videoning qaysi qismini tarjima qilishni xohlaysiz?",
+        reply_markup=reply_markup
     )
 
 # ==============================
 # ⚡ 6️⃣ ASOSIY ISHGA TUSHIRISH (MAIN)
 # ==============================
 def main():
-    # Faqat Telegram Botni Polling (Xabarlarni eshitish) rejimida yoqish
     bot_app = ApplicationBuilder().token(TOKEN).build()
 
     bot_app.add_handler(CommandHandler("start", start_handler))
