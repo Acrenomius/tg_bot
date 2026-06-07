@@ -238,6 +238,7 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"""Rasmdagi matnni oʻzbek tiliga tarjima qil. 
 Soʻzlarni shunchaki tarjima qilma, umumiy ma’nosini yetkaz. 
 Qora harflarni ishlatma (umuman ** belgisidan foydalanma). 
+Matnni foydalanuvchiga yoqadigan qilib yetkaz, faqat uni tarjima ilib qoyish bilan cheklanma
 
 Agar rasmda ajratilgan biror belgi boʻlsa oʻshani qoʻyishing mumkin. 
 Sen oʻzing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar shartmas."""
