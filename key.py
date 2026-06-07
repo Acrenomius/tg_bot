@@ -2,6 +2,7 @@ import os
 import io
 import logging
 import warnings
+import asyncio  # Asinxron oqimlar bilan ishlash uchun qo'shildi
 from dotenv import load_dotenv
 
 # CPU serverlarda ogohlantirishlarni o'chirish (Railway uchun)
@@ -102,7 +103,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await query.message.reply_text("🖼 Yozuvi bor istalgan rasmni yuboring.")
         return
 
-    # 🟢 VIDEO TUGMALARI MULTIMODAL LOGIKASI
+    # 🟢 VIDEO TUGMALARI MULTIMODAL LOGIKASI (QOTMAYDIGAN ASINXRON VARIANT)
     if query.data in ["vid_only_text", "vid_only_voice", "vid_both"]:
         video_id = context.user_data.get("current_video_id")
         video_duration = context.user_data.get("current_video_duration", 10)
@@ -111,7 +112,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             await query.message.edit_text("❌ Video ma'lumotlari eskirgan. Iltimos, videoni qayta yuboring.")
             return
 
-        status_message = await query.message.edit_text("⏳ Video yuklab olinmoqda va qayta ishlanmoqda...")
+        status_message = await query.message.edit_text("⏳ Video yuklab olinmoqda...")
         video_path = "user_video.mp4"
         audio_path = "extracted_audio.mp3"
         frame_path = "video_frame.jpg"
@@ -119,23 +120,36 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         try:
             video_file = await context.bot.get_file(video_id)
             await video_file.download_to_drive(video_path)
+            
+            # Video obyektini yuklaymiz
             clip = VideoFileClip(video_path)
 
             voice_text = ""
             screen_text = ""
 
-            # A) Whisper orqali Ovozni matnga o'girish (Siz istagan "Videodagi matn")
+            # A) Whisper orqali Ovozni matnga o'girish
             if query.data in ["vid_only_voice", "vid_both"]:
-                await status_message.edit_text("🎵 Ovoz ajratib olinmoqda va matnga o'girilmoqda...")
-                clip.audio.write_audiofile(audio_path, logger=None)
-                result = whisper_model.transcribe(audio_path, fp16=False)
+                await status_message.edit_text("🎵 Ovoz ajratib olinmoqda...")
+                # Bloklamaslik uchun alohida thread'ga beriladi
+                await asyncio.to_thread(clip.audio.write_audiofile, audio_path, logger=None)
+                
+                await status_message.edit_text("🎙️ Matnga o'girilmoqda (Whisper AI)...")
+                # Whisper transkritsiyasini ham oqimga beramiz (Asosiy qotish shu yerda edi)
+                result = await asyncio.to_thread(whisper_model.transcribe, audio_path, fp16=False)
                 raw_voice_text = result.get("text", "").strip()
                 
                 if raw_voice_text:
-                    # Whisper topgan matnni Gemini orqali qora harflarsiz, ma'no jihatdan toza tarjima qildiramiz
+                    await status_message.edit_text("✨ Tarjima shakllantirilmoqda...")
                     voice_prompt = f"""Ushbu xorijiy tildagi audio matnni o'zbek tiliga chiroyli va professional darajada tarjima qilib ber.
-So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
-⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat tarjimaning o'zini qaytar.
+Sizdan javobni aniq mana bu tartibda qaytarishingizni talab qilaman:
+
+Original matn:
+[Bu yerga audio matnning xorijiy tildagi o'z holatini yozing]
+
+Tarjimasi:
+[Bu yerga o'zbekcha ma'noviy tarjimasini yozing]
+
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki boshqa sarlavhalar ishlatma! Faqat yuqoridagi andozada javob qaytar.
 
 Audio matn: {raw_voice_text}"""
                     response_voice = client.models.generate_content(model='gemini-2.5-flash', contents=voice_prompt)
@@ -143,38 +157,47 @@ Audio matn: {raw_voice_text}"""
 
             # B) Gemini Vision orqali ekrandagi matnni aniqlash
             if query.data in ["vid_only_text", "vid_both"]:
-                await status_message.edit_text("🔍 Ekrandagi yozuvlar (subtirler) tahlil qilinmoqda...")
+                await status_message.edit_text("🔍 Ekrandagi yozuvlar tahlil qilinmoqda...")
                 frame_time = min(2.0, video_duration / 2)
-                clip.save_frame(frame_path, t=frame_time)
+                
+                # Kadrni saqlashni ham oqimga olamiz
+                await asyncio.to_thread(clip.save_frame, frame_path, t=frame_time)
                 
                 with open(frame_path, "rb") as f:
                     frame_bytes = f.read()
 
                 image_part = types.Part.from_bytes(data=bytes(frame_bytes), mime_type="image/jpeg")
                 prompt_vision = f"""Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini aniqlab, o'zbek tiliga chiroyli tarjima qilib ber.
-So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
-⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki sarlavhalar ishlatma! Faqat toza tarjimani yoz."""
+Sizdan javobni aniq mana bu tartibda qaytarishingizni talab qilaman:
+
+Original matn:
+[Bu yerga rasmdagi matnning xorijiy tildagi o'z holatini yozing]
+
+Tarjimasi:
+[Bu yerga o'zbekcha ma'noviy tarjimasini yozing]
+
+⚠️ TAQIQLANADI: Umuman qora harflar (bold, **, __) yoki boshqa sarlavhalar ishlatma! Faqat yuqoridagi andozada javob qaytar."""
                 
                 response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
                 screen_text = response_vision.text.strip() if response_vision.text else ""
 
+            # Resurslarni yopamiz
             clip.close()
 
-            # 📝 Natijani toza shaklda yig'ish (Qora harflarsiz, toza matn)
-            final_response = ""
+            # 📝 Natijani yig'ish (Sarlavha faqat "Videodagi text:")
+            final_response = "Videodagi text:\n\n"
             
             if query.data == "vid_only_text":
-                final_response = f"Videodagi text:\n{screen_text if screen_text else 'Matn topilmadi.'}"
+                final_response += screen_text if screen_text else "Matn topilmadi."
             elif query.data == "vid_only_voice":
-                final_response = f"Videodagi text:\n{voice_text if voice_text else 'Ovozli matn aniqlanmadi.'}"
+                final_response += voice_text if voice_text else "Ovozli matn aniqlanmadi."
             elif query.data == "vid_both":
-                final_response = ""
+                combined_text = ""
                 if voice_text:
-                    final_response += f"Videodagi text (Ovozdan):\n{voice_text}\n\n"
+                    combined_text += f"[OVOZDAN OLINGAN]\n{voice_text}\n\n"
                 if screen_text:
-                    final_response += f"Videodagi text (Ekrandan):\n{screen_text}"
-                if not final_response:
-                    final_response = "Videodan hech qanday matn aniqlanmadi."
+                    combined_text += f"[EKRANDAN OLINGAN]\n{screen_text}"
+                final_response += combined_text if combined_text else "Videodan hech qanday matn aniqlanmadi."
 
             await status_message.edit_text(final_response[:4000])
 
@@ -182,6 +205,11 @@ So'zlarni shunchaki tarjima qilma, umumiy ma'nosini yetkaz.
             logger.error(f"Tugma video xatosi: {e}")
             await status_message.edit_text(f"❌ Xatolik yuz berdi: {str(e)}")
         finally:
+            # Fayllar ochiq qolib ketishini oldini olish
+            try:
+                if 'clip' in locals(): clip.close()
+            except: pass
+            
             if os.path.exists(video_path): os.remove(video_path)
             if os.path.exists(audio_path): os.remove(audio_path)
             if os.path.exists(frame_path): os.remove(frame_path)
