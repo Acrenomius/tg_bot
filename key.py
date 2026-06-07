@@ -144,6 +144,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 prompt_vision = (
                     "Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini "
                     "aniqlab, o'zbek tiliga chiroyli tarjima qilib ber. Ortiqcha izoh yozma."
+                    "Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma."
+                     "HECH QANDAY sarlavha, kirish soʻzi yozma! "
+                    "foydalanuvchiga faqat matnning tarjimasini yetkaz"
+                    "lekin uni o'zing xohlaganingcha emas, tarjima qilib undan ma'nosini olib keyin taqdim et"
+                    
                 )
                 response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
                 screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
@@ -190,7 +195,12 @@ async def analyze_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clean_text = full_text.strip()
         if len(clean_text) > 10:
             await status_msg.edit_text("Hujjat tahlil qilinmoqda... ✨")
-            prompt = f"Ushbu kitob/matn mazmunini o'zbek tilida chiroyli tushuntirib ber, oxirida kimlar uchun foydaliligini yoz:\n\nMatn: {clean_text[:12000]}"
+            prompt = f"Foydalanuvchi xuddi kitobni oʻqigandek boʻlsin. "
+                "Kitob ichidagi oʻqilganda eng yorqin boʻlgan matnlarni tushuntirganingdan keyin yozib qoʻy. "
+                "Ortiqcha belgilarga e’tibor qaratma va oʻzing ham bu belgilarni ishlatma. Qora shriftdagi harflar kerak emas. "
+                "Foydalanuvchi uzun matnlarni yomon koʻradi. Qora harf va soʻzlardan foydalanma. Context kerak emas. Xulosa ham. "
+                "HECH QANDAY sarlavha, kirish soʻzi (masalan: ‘Hujjat mazmuni’, ‘Mana tahlil’) yozma! "
+                "Oxirida bu pdf hujjat yoki kitob kimlar uchun foydali ekanligini ham chiqar.\n\n" {clean_text[:12000]}"
             
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             final_output = response.text.strip() if response.text else "Tahlil natijasi bo'sh."
@@ -213,7 +223,12 @@ async def analyze_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_bytearray = await photo_file.download_as_bytearray()
 
         image_part = types.Part.from_bytes(data=bytes(image_bytearray), mime_type="image/jpeg")
-        prompt = "Rasmdagi matnni o'zbek tiliga tarjima qil. Ortiqcha izoh yozma."
+                prompt = (
+            "Rasmdagi matnni oʻzbek tiliga tarjima qil. "
+            "Soʻzlarni shunchaki tarjima qilma, umumiy ma’nosini yetkaz. "
+            "Qora harflarni ishlatma. Agar rasmda ajratilgan biror belgi boʻlsa oʻshani qoʻyishing mumkin. "
+            "Sen oʻzing ortiqcha deb belgilagan yoki rasmda ortiqchadek tuyulgan belgilar shartmas."
+        )
         
         response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
         await status_msg.edit_text(response.text if response.text else "Matn topilmadi.")
@@ -231,15 +246,32 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
     status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
 
+async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text: 
+        return
+        
+    status_msg = await update.message.reply_text("⏳ Matn o'zbek tiliga tarjima qilinmoqda...")
+
     try:
-        prompt = f"Berilgan matnni o'zbek tiliga professional tarjima qiling. Ortiqcha so'z qo'shmang:\n\n{update.message.text}"
+        # F-string ichida uchta qo'shtirnoq ishlatish matnni qatorlarga bo'lishni osonlashtiradi
+        prompt = f"""Siz professional va yuqori malakali sinxron tarjimonsiz. 
+Vazifangiz berilgan matnni qaysi tilda boʻlishidan qat’i nazar oʻzbek tiliga mukammal va professional darajada tarjima qilish. Ortiqcha izoh yoki qo'shimcha gaplar qo'shmang.
+keyin foydalanuvchiga matn taqdim etayotganingizda, Soʻzlarni shunchaki tarjima qilmasdan umumiy ma’nosini yetkazing. 
+
+Matn:
+{update.message.text}"""
+
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        
         await status_msg.delete()
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response.text[:3500])
+        
     except Exception as e:
         logger.error(f"Tarjima xatosi: {e}")
         error_str = str(e)
-        if "503" in error_str or "high demand" in error_str.lower():
+        
+        # Google API 503 va yuqori yuklama xatoliklarini tutib qolish
+        if "503" in error_str or "high demand" in error_str.lower() or "unavailable" in error_str.lower():
             await status_msg.edit_text("⚠️ Google Gemini serverlarida ayni damda yuklama juda yuqori. Iltimos, 1-2 daqiqadan so'ng qayta urinib ko'ring!")
         else:
             await status_msg.edit_text("❌ Tarjimada texnik xatolik ketdi. Birozdan so'ng qayta urinib ko'ring.")
