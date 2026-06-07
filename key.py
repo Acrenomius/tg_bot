@@ -116,7 +116,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📄 PDF tahlili", callback_data="help_pdf")
         ],
         [
-            InlineKeyboardButton("🖼 Rasm (Vision)", callback_data="help_vision")
+            InlineKeyboardButton("🖼 Rasm (Vision)", callback_data="help_vision"),
+            InlineKeyboardButton("🎥Video tarjima uchun", callback_data="help_vision")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -212,38 +213,75 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
     status_message = await update.message.reply_text("⏳ Video yuklab olinmoqda...")
     video_path = "user_video.mp4"
     audio_path = "extracted_audio.mp3"
+    frame_path = "video_frame.jpg"
 
     try:
+        # 1. Videoni yuklab olish
         video_file = await context.bot.get_file(video.file_id)
         await video_file.download_to_drive(video_path)
 
-        await status_message.edit_text("🎵 Videodan audio ajratib olinmoqda...")
         clip = VideoFileClip(video_path)
+
+        # ------------------------------------
+        # 🎙️ 1-QISMM: OVOZNI MATNGA O'GIRISH (WHISPER)
+        # ------------------------------------
+        await status_message.edit_text("🎵 Videodan audio ajratib olinmoqda...")
         clip.audio.write_audiofile(audio_path, logger=None)
-        clip.close()
 
         await status_message.edit_text("🗣️ Ovoz matnga o'girilmoqda (Whisper AI)...")
         result = whisper_model.transcribe(audio_path)
-        original_text = result.get("text", "").strip()
+        voice_text = result.get("text", "").strip()
 
-        if not original_text:
-            await status_message.edit_text("❌ Videoda aniq gapirilgan ovoz topilmadi.")
-            return
-
-        await status_message.edit_text("🤖 Gemini AI matnni o'zbekchaga o'girmoqda...")
-        prompt = f"Quyidagi chet tilidagi matn videodan ajratib olindi. Uni o'zbek tiliga ma'noli qilib o'girib ber:\n\n{original_text}"
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        # ------------------------------------
+        # 🖼️ 2-QISMM: EKRANDAGI MATNNI ANIQLASH (GEMINI VISION)
+        # ------------------------------------
+        await status_message.edit_text("🔍 Video ekranidagi yozuvlar (subtitrlar) tahlil qilinmoqda...")
         
-        uzbek_translation = f"📝 **Videodan olingan matn:**\n_{original_text}_\n\n🇺🇿 **O'zbekcha tarjimasi:**\n{response.text}"
-        await status_message.edit_text(uzbek_translation[:4000])
+        # Videoning aynan o'rtasidan (yoki 2-soniyasidan) bitta kadr (skrinshot) olamiz
+        frame_time = min(2.0, clip.duration / 2)
+        clip.save_frame(frame_path, t=frame_time)
+        clip.close() # Klipni yopamiz
+
+        # Kadrni bayt ko'rinishida o'qiymiz
+        with open(frame_path, "rb") as f:
+            frame_bytes = f.read()
+
+        image_part = types.Part.from_bytes(data=bytes(frame_bytes), mime_type="image/jpeg")
+        
+        prompt_vision = (
+            "Ushbu video kadr ichida ko'rinib turgan har qanday matnni, subtitrni yoki slayd yozuvlarini "
+            "aniqlab, ularni o'zbek tiliga ma'noli qilib tarjima qilib ber. "
+            "Agar rasmda umuman yozuv bo'lmasa, shunchaki 'Ekrandagi yozuvlar: Matn topilmadi' deb qaytar."
+        )
+        
+        response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
+        screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
+
+        # ------------------------------------
+        # 📝 3-QISMM: NATIJALARNI BIRLASHTIRISH
+        # ------------------------------------
+        await status_message.edit_text("🤖 Yakuniy natija tayyorlanmoqda...")
+
+        final_response = "🎬 **Video tahlili natijasi:**\n\n"
+        
+        if voice_text:
+            final_response += f"🗣️ **Gapirilgan ovoz tarjimasi (Whisper):**\n_{voice_text}_\n\n"
+        else:
+            final_response += "🗣️ **Gapirilgan ovoz tarjimasi:**\n_Videoda aniq gapirilgan ovoz topilmadi._\n\n"
+            
+        final_response += f"📺 **Ekrandagi yozuvlar/Subtitr tarjimasi (Gemini Vision):**\n{screen_text}"
+
+        # Foydalanuvchiga yuborish
+        await status_message.edit_text(final_response[:4000])
 
     except Exception as e:
-        logger.error(f"Video xatosi: {e}")
-        await status_message.edit_text(f"❌ Video qayta ishlashda xato: {str(e)}")
+        logger.error(f"Video multimodal xatosi: {e}")
+        await status_message.edit_text(f"❌ Video qayta ishlashda xato yuz berdi: {str(e)}")
     finally:
+        # Vaqtinchalik fayllarni tozalash
         if os.path.exists(video_path): os.remove(video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
-
+        if os.path.exists(frame_path): os.remove(frame_path)
 # ==============================
 # 🌐 6️⃣ FASTAPI YO'LAKLARI
 # ==============================
