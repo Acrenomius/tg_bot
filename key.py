@@ -3,15 +3,12 @@ import io
 import logging
 import asyncio
 import warnings
+import http.server
+import threading
 from dotenv import load_dotenv
 
 # CPU serverlarda ogohlantirishlarni o'chirish (Railway uchun)
 warnings.filterwarnings("ignore", category=UserWarning)
-
-# FastAPI kutubxonalari
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 
 # Yangi rasmiy Google SDK (Gemini uchun)
 from google import genai
@@ -62,26 +59,6 @@ print("⏳ Whisper modeli yuklanmoqda...")
 whisper_model = whisper.load_model("base")
 print("✅ Whisper modeli tayyor!")
 
-# FastAPI veb-server obyekti
-app = FastAPI(title="Universal AI Translator Platform API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# HTML Shablon (FastAPI bosh sahifasi uchun)
-html_shablon = """
-<html>
-    <head><title>AI Translator Status</title></head>
-    <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
-        <h2>🌐 Universal AI Translator Server Status: RUNNING</h2>
-    </body>
-</html>
-"""
 
 # ==============================
 # 2️⃣ START KOMANDASI VA TUGMALAR HANDLERI
@@ -118,7 +95,6 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     
-    # Oddiy yordam tugmalari
     if query.data == "help_translation":
         await query.message.reply_text("📝 Matnni to'g'ridan-to'g'ri yuboring, avtomatik o'zbekchaga o'giriladi.")
         return
@@ -273,7 +249,6 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("❌ Kechirasiz, video davomiyligi eng ko'pi bilan 2 minut bo'lishi kerak!")
         return
 
-    # Callback bosilganda ishlatish uchun ma'lumotlarni saqlaymiz
     context.user_data["current_video_id"] = video.file_id
     context.user_data["current_video_duration"] = video.duration
 
@@ -295,31 +270,32 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
     )
 
 # ==============================
-# 🌐 6️⃣ FASTAPI YO'LAKLARI
+# 🌐 6️⃣ SOXTA PORT PANEL (RAILWAY UYQUGA KETMASLIGI UCHUN)
 # ==============================
-@app.get("/", response_class=HTMLResponse)
-async def root_status():
-    return html_shablon
-
-@app.post("/api/v1/app-process")
-async def independent_app_handler(file: UploadFile = File(...)):
-    try:
-        file_bytes = await file.read()
-        image_part = types.Part.from_bytes(data=bytes(file_bytes), mime_type=file.content_type)
-        prompt = "Ushbu tasvirdagi matnlarni o'zbek tiliga terminologik aniqlikda o'gir va mukammal tahlil qil."
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image_part])
-        return {"status": "success", "data": response.text}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# ==============================
-# ⚡ 7️⃣ LIFESPAN & BACKGROUND EVENT
-# ==============================
-from contextlib import asynccontextmanager
-
-async def run_bot_in_background():
-    await asyncio.sleep(3)  # Port to'liq ochilishi uchun kutish
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server_address = ("", port)
     
+    class DummyHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"🤖 Telegram Bot Ping Server is Active!")
+
+    httpd = http.server.HTTPServer(server_address, DummyHandler)
+    print(f"🌐 Soxta port matori ochildi: Port {port}")
+    httpd.serve_forever()
+
+# ==============================
+# ⚡ 7️⃣ ASOSIY ISHGA TUSHIRISH (MAIN)
+# ==============================
+def main():
+    # 1. Soxta port matorini alohida ipda (Thread) fonda yoqamiz
+    dummy_thread = threading.Thread(target=run_dummy_server, daemon=True)
+    dummy_thread.start()
+
+    # 2. Telegram botni qurish va Pollingni boshlash
     bot_app = ApplicationBuilder().token(TOKEN).build()
 
     bot_app.add_handler(CommandHandler("start", start_handler))
@@ -329,18 +305,8 @@ async def run_bot_in_background():
     bot_app.add_handler(MessageHandler(filters.VIDEO, handle_video_translation))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_text))
 
-    try:
-        await bot_app.initialize()
-        await bot_app.start()
-        await bot_app.updater.start_polling(drop_pending_updates=True)
-        print("🤖 Telegram Bot fonda muvaffaqiyatli uchdi!")
-    except Exception as e:
-        logger.error(f"Botni fonda yoqishda xato: {e}")
+    print("🤖 Telegram Bot Polling rejimida muvaffaqiyatli uchdi!")
+    bot_app.run_polling(drop_pending_updates=True)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    asyncio.ensure_future(run_bot_in_background())
-    yield
-    print("🌐 Server to'xtatildi.")
-
-app.router.lifespan_context = lifespan
+if __name__ == "__main__":
+    main()
