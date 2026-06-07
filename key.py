@@ -69,29 +69,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Kiber-neon interfeys uchun tayyor HTML shablon matni
-html_shablon = """
-<!DOCTYPE html>
-<html lang="uz">
-<head>
-    <meta charset="UTF-8">
-    <title>AI Multimodal Standalone App</title>
-    <style>
-        body { background-color: #0d1117; color: #39FF14; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 50px; }
-        .container { border: 2px solid #39FF14; display: inline-block; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px #39FF14; }
-        h1 { margin-bottom: 10px; }
-        p { color: #888; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🟢 Universal AI Center</h1>
-        <p>Tizim va Telegram Bot fonda muvaffaqiyatli ishlamoqda...</p>
-    </div>
-</body>
-</html>
-"""
-
 # ==============================
 # 2️⃣ START KOMANDASI VA TUGMALAR HANDLERI
 # ==============================
@@ -201,6 +178,36 @@ async def analyze_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Tarjima xatosi: {e}")
         await status_msg.edit_text("Tarjimada texnik xatolik ketdi.")
 
+async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    video = update.message.video
+    if video.duration > 120:
+        await update.message.reply_text("❌ Kechirasiz, video davomiyligi eng ko'pi bilan 2 minut bo'lishi kerak!")
+        return
+
+    # Videoning file_id sini eslab qolamiz, tugma bosilganda yuklab olish uchun
+    context.user_data["current_video_id"] = video.file_id
+    context.user_data["current_video_duration"] = video.duration
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📺 Faqat ekrandagi matn (Subtitr)", callback_data="vid_only_text"),
+            InlineKeyboardButton("🎙️ Faqat gapirilgan ovoz", callback_data="vid_only_voice")
+        ],
+        [
+            InlineKeyboardButton("🎬 Ikkalasini ham (To'liq tahlil)", callback_data="vid_both")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        text="🎬 **Video qabul qilindi!**\nUshbu videoning qaysi qismini tarjima qilishni xohlaysiz?",
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+
+
+
+
 # ==============================
 # 🎬 VIDEO TARJIMA FUNKSIYASI (whisper + gemini)
 # ==============================
@@ -258,6 +265,85 @@ async def handle_video_translation(update: Update, context: ContextTypes.DEFAULT
         
         response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
         screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
+
+
+
+    async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # ... eski help_translation if-shartlari shu yerda turadi ...
+
+    # 🟢 VIDEO TUGMALARI LOGIKASI
+    if query.data in ["vid_only_text", "vid_only_voice", "vid_both"]:
+        video_id = context.user_data.get("current_video_id")
+        video_duration = context.user_data.get("current_video_duration", 10)
+        
+        if not video_id:
+            await query.message.edit_text("❌ Video ma'lumotlari eskirgan. Iltimos, videoni qayta yuboring.")
+            return
+
+        status_message = await query.message.edit_text("⏳ Video yuklab olinmoqda va qayta ishlanmoqda...")
+        video_path = "user_video.mp4"
+        audio_path = "extracted_audio.mp3"
+        frame_path = "video_frame.jpg"
+
+        try:
+            # Videoni yuklab olamiz
+            video_file = await context.bot.get_file(video_id)
+            await video_file.download_to_drive(video_path)
+            clip = VideoFileClip(video_path)
+
+            voice_text = ""
+            screen_text = ""
+
+            # Foydalanuvchi tanloviga qarab ishlaymiz:
+            
+            # A) Agar faqat ovoz yoki ikkalasi ham tanlangan bo'lsa (Whisper ishlaydi)
+            if query.data in ["vid_only_voice", "vid_both"]:
+                await status_message.edit_text("🎵 Ovoz ajratib olinmoqda va matnga o'girilmoqda...")
+                clip.audio.write_audiofile(audio_path, logger=None)
+                result = whisper_model.transcribe(audio_path, fp16=False)
+                voice_text = result.get("text", "").strip()
+
+            # B) Agar faqat ekrandagi matn yoki ikkalasi ham tanlangan bo'lsa (Gemini Vision ishlaydi)
+            if query.data in ["vid_only_text", "vid_both"]:
+                await status_message.edit_text("🔍 Ekrandagi yozuvlar (subtitrlar) tahlil qilinmoqda...")
+                frame_time = min(2.0, video_duration / 2)
+                clip.save_frame(frame_path, t=frame_time)
+                
+                with open(frame_path, "rb") as f:
+                    frame_bytes = f.read()
+
+                image_part = types.Part.from_bytes(data=bytes(frame_bytes), mime_type="image/jpeg")
+                prompt_vision = (
+                    "Ushbu video kadr ichidagi matn, subtitr yoki slayd yozuvlarini "
+                    "aniqlab, o'zbek tiliga chiroyli tarjima qilib ber. Ortiqcha izoh yozma."
+                )
+                response_vision = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt_vision, image_part])
+                screen_text = response_vision.text.strip() if response_vision.text else "Matn topilmadi."
+
+            clip.close()
+
+            # 📝 Natijani yig'ish
+            final_response = "🎬 **Video tahlili natijasi:**\n\n"
+            
+            if query.data == "vid_only_text":
+                final_response += f"📺 **Ekrandagi yozuvlar/Subtitr tarjimasi:**\n{screen_text}"
+            elif query.data == "vid_only_voice":
+                final_response += f"🗣️ **Gapirilgan ovoz tarjimasi:**\n_{voice_text if voice_text else 'Ovoz topilmadi.'}_"
+            elif query.data == "vid_both":
+                final_response += f"🗣️ **Gapirilgan ovoz tarjimasi:**\n_{voice_text if voice_text else 'Ovoz topilmadi.'}_\n\n"
+                final_response += f"📺 **Ekrandagi yozuvlar/Subtitr tarjimasi:**\n{screen_text}"
+
+            await status_message.edit_text(final_response[:4000])
+
+        except Exception as e:
+            await status_message.edit_text(f"❌ Xatolik: {str(e)}")
+        finally:
+            if os.path.exists(video_path): os.remove(video_path)
+            if os.path.exists(audio_path): os.remove(audio_path)
+            if os.path.exists(frame_path): os.remove(frame_path)
 
         # ------------------------------------
         # 📝 3-QISM: NATIJALARNI BIRLASHTIRISH
